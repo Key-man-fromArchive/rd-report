@@ -65,6 +65,12 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 | `caption` | 표는 위 `<표 n> …`, 그림은 아래 `[그림 n] …` — 번호 자동 |
 | `image` | PNG/JPEG, `mm` 너비(본문폭 150mm 상한), 높이는 비율. 경로는 JSON 파일 기준 |
 | `appendix` | 새 쪽 + 「붙임 n. …」 |
+| `sub` | 둘째 수준 소제목 (「가. …」) |
+| `grid` | 그림 격자: 칸마다 `title`·`sub`·`image`·`table`(작은 표)·`frame`(칸 테두리 색, 예: `C00000`). `cols`(기본 2), `mm`(그림 너비), `rows_per_page`·`first_rows`(그 줄 수마다 쪽 나눔 — 칸이 쪽 경계에서 잘리지 않게), `caption` |
+
+표 추가 옵션: `headers: null`(머리줄 없음), `label_col: true`(첫 열을 회색 라벨로 — 항목:내용 카드),
+`size`(글자 크기, 반 pt 단위: 기본 20, 작은 표 13–15), 표 이름이 목록에 없으면(`"custom"` 등) `headers`·`widths`·`align`을 직접 준다.
+칸 값은 문자열 또는 `{"t": "…", "bold": true, "fill": "BFBFBF"}`(강조할 칸). 표는 고정 폭이라 `widths` 비율이 그대로 지켜진다.
 
 ### 서식 (rd_docx.js)
 

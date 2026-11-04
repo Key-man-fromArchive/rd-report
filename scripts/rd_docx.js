@@ -12,10 +12,18 @@
  *     "cover": [["과제명", "…"], ["수신", "…"]],   // 생략 가능: 있으면 표지 쪽을 따로 만든다
  *     "blocks": [
  *       {"h": "1. 연구개발과제의 개요"},          // 소제목 ("new_page": true 로 새 쪽)
+ *       {"sub": "가. 판정 방법"},                 // 둘째 수준 소제목
  *       {"box": "…"}, {"item": "…"}, {"dash": "…"}, {"note": "…"}, {"text": "…"},
  *       {"table": "achievement", "rows": [[…]], "caption": "목표 달성 수준",
  *        "headers": […], "summary": […], "widths": [3, 6, 1]},   // headers/summary/widths 생략 가능
+ *       //   headers: null → 머리줄 없음. "label_col": true → 첫 열을 회색 라벨로. "size": 글자(반 pt)
+ *       //   칸 값은 문자열 또는 {"t": "…", "bold": true, "fill": "EEEEEE"}
  *       {"image": "fig/a.png", "mm": 150, "caption": "판정 결과 분포"},
+ *       {"grid": [{"title": "#1 …", "sub": "…", "image": "a.png", "frame": "C00000",
+ *                  "table": {"headers": […], "rows": [[…]], "size": 14}}], "cols": 2, "mm": 78},
+ *       // 그림 격자: 칸마다 제목·부제·그림·작은 표, frame 은 칸 테두리 색(없으면 테두리 없음)
+ *       // "rows_per_page": 3, "first_rows": 2 → 그 줄 수마다 쪽을 나눈다(표 안의 표는 프로그램에 따라
+ *       // '행 나누지 않기'가 무시되어 칸이 쪽 경계에서 잘리므로, 쪽 나눔을 명시하는 편이 확실하다)
  *       {"pagebreak": true},
  *       {"appendix": "마커별 결론"}              // 새 쪽 + "붙임 n. 마커별 결론"
  *     ]
@@ -31,6 +39,7 @@ const path = require("path");
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun, Footer,
   AlignmentType, BorderStyle, WidthType, ShadingType, VerticalAlign, PageNumber, TabStopType,
+  TableLayoutType,
 } = require("docx");
 
 const SKILL_DIR = path.resolve(__dirname, "..");
@@ -75,44 +84,103 @@ const TABLES = {
   sample_plan: [["구분", 2, "c"], ["대상", 3, "j"], ["시료 수", 1.4, "c"], ["반응 수", 1.4, "c"], ["비고", 2.5, "j"]],
 };
 
-function dxaWidths(ratios) {
+function dxaWidths(ratios, totalWidth = CONTENT) {
   const total = ratios.reduce((a, b) => a + b, 0);
-  const w = ratios.map((r) => Math.floor((CONTENT * r) / total));
-  w[w.length - 1] += CONTENT - w.reduce((a, b) => a + b, 0);
+  const w = ratios.map((r) => Math.floor((totalWidth * r) / total));
+  w[w.length - 1] += totalWidth - w.reduce((a, b) => a + b, 0);
   return w;
 }
 
-function cell(text, width, { header = false, align = "c" } = {}) {
+function cell(value, width, { header = false, align = "c", size = SZ.table, label = false, pad = 60 } = {}) {
+  const v = value !== null && typeof value === "object" ? value : { t: value };
+  const shaded = header || label || v.fill;
+  const bold = header || label || !!v.bold;
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
     borders: { top: LINE, bottom: LINE, left: LINE, right: LINE },
-    shading: header ? { fill: GRAY, type: ShadingType.CLEAR, color: "auto" } : undefined,
+    shading: shaded ? { fill: v.fill || GRAY, type: ShadingType.CLEAR, color: "auto" } : undefined,
     verticalAlign: VerticalAlign.CENTER,
-    margins: { top: 60, bottom: 60, left: 100, right: 100 },
-    children: String(text).split("\n").map((line) => new Paragraph({
-      alignment: header || align === "c" ? AlignmentType.CENTER : AlignmentType.LEFT,
-      spacing: { line: 260 },
-      children: [run(line, { font: header ? FONT_HEAD : FONT_BODY, size: SZ.table, bold: header })],
+    margins: { top: pad, bottom: pad, left: Math.min(100, pad + 40), right: Math.min(100, pad + 40) },
+    children: String(v.t).split("\n").map((line) => new Paragraph({
+      alignment: header || label || align === "c" ? AlignmentType.CENTER : AlignmentType.LEFT,
+      spacing: { line: size < SZ.table ? 220 : 260 },
+      children: [run(line, { font: header || label ? FONT_HEAD : FONT_BODY, size, bold })],
     })),
   });
 }
 
-function table(block) {
-  const spec = TABLES[block.table] || (block.headers || block.rows[0]).map(() => ["", 1, "c"]);
-  const headers = block.headers || spec.map((c) => c[0]);
+function table(block, totalWidth = CONTENT) {
+  const first = block.headers || block.rows[0];
+  const spec = TABLES[block.table] || first.map(() => ["", 1, "c"]);
+  const headers = block.headers === null ? null : block.headers || spec.map((c) => c[0]);
   const aligns = block.align || spec.map((c) => c[2]);
-  const widths = dxaWidths(block.widths || spec.map((c) => c[1]));
-  if (headers.length !== widths.length) throw new Error(`표 ${block.table}: 열 수가 맞지 않음`);
-  const fill = (v) => (v === null || v === undefined || String(v) === "" ? "-" : String(v));
-  const rows = [new TableRow({ tableHeader: true, cantSplit: true,
-    children: headers.map((h, i) => cell(h, widths[i], { header: true })) })];
+  const widths = dxaWidths(block.widths || spec.map((c) => c[1]), totalWidth);
+  if (headers && headers.length !== widths.length) throw new Error(`표 ${block.table}: 열 수가 맞지 않음`);
+  const size = block.size || SZ.table;
+  const pad = size <= 15 ? 20 : size < SZ.table ? 40 : 60;
+  const fill = (v) => (v === null || v === undefined || String(v) === "" ? "-" : v);
+  const rows = [];
+  if (headers) rows.push(new TableRow({ tableHeader: true, cantSplit: true,
+    children: headers.map((h, i) => cell(h, widths[i], { header: true, size, pad })) }));
   for (const r of block.rows) {
     if (r.length !== widths.length) throw new Error(`표 ${block.table}: 행의 칸 수 ${r.length} ≠ ${widths.length}`);
-    rows.push(new TableRow({ cantSplit: true, children: r.map((v, i) => cell(fill(v), widths[i], { align: aligns[i] })) }));
+    rows.push(new TableRow({ cantSplit: true, children: r.map((v, i) =>
+      cell(fill(v), widths[i], { align: aligns[i], size, pad, label: !!block.label_col && i === 0 })) }));
   }
   if (block.summary) rows.push(new TableRow({ cantSplit: true,
-    children: block.summary.map((v, i) => cell(fill(v), widths[i], { header: true })) }));
-  return new Table({ width: { size: CONTENT, type: WidthType.DXA }, columnWidths: widths, rows });
+    children: block.summary.map((v, i) => cell(fill(v), widths[i], { header: true, size, pad })) }));
+  // 고정 폭: '내용에 맞춤'이면 긴 서열이 열을 넓히고 좁은 열의 글자가 세로로 깨진다.
+  return new Table({ width: { size: totalWidth, type: WidthType.DXA }, columnWidths: widths,
+    layout: TableLayoutType.FIXED, rows });
+}
+
+const NONE = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+// 표 칸은 문단으로 끝나야 하므로 표 뒤에 두는 빈 문단 — 높이를 거의 0으로 해 쪽을 넘기지 않게 한다.
+const tiny = () => new Paragraph({ spacing: { before: 0, after: 0, line: 40, lineRule: "exact" },
+  children: [new TextRun({ text: "", size: 2 })] });
+
+// 그림 격자: 칸마다 제목·부제·그림·작은 표. frame 색이 있으면 그 칸만 테두리를 두른다.
+function grid(block, baseDir) {
+  const cols = block.cols || 2;
+  const colW = Math.floor(CONTENT / cols);
+  const innerW = colW - 160;
+  const items = block.grid;
+  const rows = [];
+  for (let i = 0; i < items.length; i += cols) {
+    rows.push(new TableRow({ cantSplit: true, children: Array.from({ length: cols }, (_, k) => {
+      const it = items[i + k];
+      const kids = [];
+      if (it) {
+        if (it.title) kids.push(new Paragraph({ keepNext: true, children: [run(it.title, { font: FONT_HEAD, size: 19, bold: true })] }));
+        if (it.sub) kids.push(new Paragraph({ keepNext: true, spacing: { after: 40 }, children: [run(it.sub, { font: FONT_HEAD, size: 15 })] }));
+        if (it.image) kids.push(imagePara(path.resolve(baseDir, it.image), Math.min(block.mm || 78, (innerW / 1440) * 25.4), null, 20));
+        if (it.table) kids.push(table(it.table, innerW - 120));
+      }
+      kids.push(tiny());
+      const edge = it && it.frame ? { style: BorderStyle.SINGLE, size: 18, color: it.frame } : NONE;
+      const inner = new Table({ width: { size: innerW, type: WidthType.DXA }, columnWidths: [innerW],
+        layout: TableLayoutType.FIXED, rows: [
+        new TableRow({ cantSplit: true, children: [new TableCell({ width: { size: innerW, type: WidthType.DXA },
+          borders: { top: edge, bottom: edge, left: edge, right: edge },
+          margins: { top: 60, bottom: 20, left: 60, right: 60 }, children: kids })] })] });
+      return new TableCell({ width: { size: colW, type: WidthType.DXA },
+        borders: { top: NONE, bottom: NONE, left: NONE, right: NONE },
+        margins: { top: 40, bottom: 120, left: 40, right: 40 }, children: [inner, tiny()] });
+    }) }));
+  }
+  return new Table({ width: { size: colW * cols, type: WidthType.DXA }, columnWidths: Array(cols).fill(colW),
+    layout: TableLayoutType.FIXED, rows });
+}
+
+function imagePara(file, mm, caption, before = 160) {
+  const buf = fs.readFileSync(file);
+  const [pw, ph] = imageSize(buf);
+  const maxPx = (CONTENT / 1440) * 96;
+  const wPx = Math.min((mm / 25.4) * 96, maxPx);
+  return new Paragraph({ alignment: AlignmentType.CENTER, keepNext: !!caption, spacing: { before, after: 60 },
+    children: [new ImageRun({ type: /\.jpe?g$/i.test(file) ? "jpg" : "png", data: buf,
+      transformation: { width: Math.round(wPx), height: Math.round((wPx * ph) / pw) },
+      altText: { title: caption || path.basename(file), description: caption || path.basename(file), name: path.basename(file) } })] });
 }
 
 // PNG/JPEG 크기 (픽셀) — 높이를 비율대로 맞추려고 읽는다.
@@ -159,6 +227,28 @@ function build(spec, baseDir) {
       children.push(new Paragraph({ pageBreakBefore: !!b.new_page, keepNext: true,
         spacing: { before: b.new_page ? 0 : 320, after: 120 },
         children: [run(b.h, { font: FONT_HEAD, size: SZ.heading, bold: true })] }));
+    } else if (b.sub !== undefined) {
+      children.push(new Paragraph({ keepNext: true, spacing: { before: 200, after: 80 },
+        children: [run(b.sub, { font: FONT_HEAD, size: SZ.box, bold: true })] }));
+    } else if (b.grid !== undefined) {
+      if (b.caption) {
+        nFig++;
+        children.push(new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 120, after: 80 },
+          children: [run(`[그림 ${nFig}] ${b.caption}`, { font: FONT_HEAD, size: SZ.caption })] }));
+      }
+      const cols = b.cols || 2;
+      const per = (b.rows_per_page || 0) * cols;
+      if (!per) {
+        children.push(grid(b, baseDir));
+      } else {
+        let start = 0, take = (b.first_rows || b.rows_per_page) * cols;
+        while (start < b.grid.length) {
+          if (start > 0) children.push(new Paragraph({ pageBreakBefore: true, spacing: { after: 0 }, children: [] }));
+          children.push(grid({ ...b, grid: b.grid.slice(start, start + take) }, baseDir));
+          start += take;
+          take = per;
+        }
+      }
     } else if (b.appendix !== undefined) {
       nAppendix++;
       children.push(new Paragraph({ pageBreakBefore: true, keepNext: true, spacing: { after: 200 },
@@ -183,15 +273,7 @@ function build(spec, baseDir) {
       children.push(table(b));
       children.push(new Paragraph({ spacing: { after: 120 }, children: [] }));
     } else if (b.image !== undefined) {
-      const file = path.resolve(baseDir, b.image);
-      const buf = fs.readFileSync(file);
-      const [pw, ph] = imageSize(buf);
-      const maxPx = (CONTENT / 1440) * 96;
-      const wPx = Math.min(((b.mm || 150) / 25.4) * 96, maxPx);
-      children.push(new Paragraph({ alignment: AlignmentType.CENTER, keepNext: !!b.caption, spacing: { before: 160, after: 60 },
-        children: [new ImageRun({ type: /\.jpe?g$/i.test(file) ? "jpg" : "png", data: buf,
-          transformation: { width: Math.round(wPx), height: Math.round((wPx * ph) / pw) },
-          altText: { title: b.caption || path.basename(file), description: b.caption || path.basename(file), name: path.basename(file) } })] }));
+      children.push(imagePara(path.resolve(baseDir, b.image), b.mm || 150, b.caption));
       if (b.caption) {
         nFig++;
         children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
@@ -208,10 +290,12 @@ function build(spec, baseDir) {
     creator: company.creator || org, title: spec.title,
     styles: { default: { document: { run: { font: FONT_BODY, size: SZ.body } } } },
     sections: [{
-      properties: { page: { size: { width: PAGE.width, height: PAGE.height },
+      // 표지가 있으면 첫 쪽에는 쪽 번호를 찍지 않는다(titlePage + 빈 첫 쪽 바닥글).
+      properties: { titlePage: !!spec.cover, page: { size: { width: PAGE.width, height: PAGE.height },
         margin: { top: PAGE.top, bottom: PAGE.bottom, left: PAGE.left, right: PAGE.right } } },
       footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER,
-        children: [new TextRun({ children: ["- ", PageNumber.CURRENT, " -"], font: FONT_HEAD, size: 20 })] })] }) },
+        children: [new TextRun({ children: ["- ", PageNumber.CURRENT, " -"], font: FONT_HEAD, size: 20 })] })] }),
+        first: new Footer({ children: [new Paragraph({ children: [] })] }) },
       children,
     }],
   });
