@@ -1,9 +1,13 @@
 ---
-name: hwpx
-description: "한글(HWPX) 보고서 생성/편집/읽기 스킬. .hwpx 파일, 한글 문서, Hancom, OWPML 관련 요청 시 사용."
+name: hwpx-rd
+description: "한글(HWPX) 보고서 생성/편집/읽기 스킬 — 연구개발 회사용(연구개발 결과보고서·실험계획서·실험결과 보고). .hwpx 파일, 한글 문서, 한글 보고서, 공문서 양식, 개조식 보고서, 연구개발 결과보고서, 실험계획서, Hancom, OWPML 관련 요청 시 사용. 그림 삽입·쪽 번호 지원."
 ---
 
-# HWPX 보고서 생성 스킬 — XML-first 워크플로우
+# HWPX 보고서 생성 스킬 (연구개발용) — XML-first 워크플로우
+
+> [kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)를 연구개발 회사용으로 고친 포크다. 원본 기능은 그대로이고,
+> 아래 「연구개발 문서 작성」 절의 기능(본문 작성 도구, 그림, 쪽 번호, 연구개발 표 양식, `rd` 문체 기준,
+> 회사 설정)이 더해졌다. **새 보고서는 「연구개발 문서 작성」 절의 `rd_section.Report`로 쓰는 것을 기본으로 한다.**
 
 한글(Hancom Office)의 HWPX 보고서를 **XML 직접 작성** 중심으로 생성, 편집, 읽기할 수 있는 스킬.
 HWPX는 ZIP 기반 XML 컨테이너(OWPML 표준)이다. python-hwpx API의 서식 버그를 완전히 우회하며, 세밀한 서식 제어가 가능하다.
@@ -30,6 +34,10 @@ HWPX는 ZIP 기반 XML 컨테이너(OWPML 표준)이다. python-hwpx API의 서�
    ```
    설치 후 다시 `python3 -c "import lxml"`로 확인. 여전히 실패하면 사용자에게 환경 문제(파이썬/네트워크/권한)를 보고하고 작업을 중단한다.
 
+   > **`externally-managed-environment` 오류(PEP 668)**: 최근 리눅스 배포판은 시스템 파이썬에 `pip install --user`를 막는다.
+   > 이때는 사용자에게 알리고 승인을 받은 뒤 `python3 -m pip install --user --break-system-packages -r "$SKILL_DIR/requirements.txt"`
+   > (사용자 홈에만 설치, 시스템 패키지는 건드리지 않음)로 설치하거나, 가상환경을 만들어 그 파이썬으로 스크립트를 실행한다.
+
 3. **텍스트 추출(`text_extract.py`)이 필요한 요청에 한해서만 `python-hwpx` 확인**
    `requirements.txt`에 이미 포함되어 있어 2번에서 함께 설치된다. 일반적인 보고서 생성 흐름에서는 별도 확인이 불필요하다.
 
@@ -44,8 +52,8 @@ HWPX는 ZIP 기반 XML 컨테이너(OWPML 표준)이다. python-hwpx API의 서�
 
 | 설치 방식 | `SKILL_DIR` 값 |
 |---|---|
-| 사용자 전역 설치 | `$HOME/.claude/skills/hwpx` |
-| 프로젝트 전용 설치 | `$(pwd)/.claude/skills/hwpx` (프로젝트 루트 기준) |
+| 사용자 전역 설치 | `$HOME/.claude/skills/hwpx-rd` |
+| 프로젝트 전용 설치 | `$(pwd)/.claude/skills/hwpx-rd` (프로젝트 루트 기준) |
 | 리포 클론 직접 사용 | `$(pwd)` (리포 루트 자체가 곧 스킬) |
 
 Claude agent는 이 SKILL.md를 읽어 들인 실제 위치를 기준으로 `SKILL_DIR`를 자연스럽게 결정한다. 아래 모든 예시의 `$SKILL_DIR`는 이 값으로 치환해 사용한다.
@@ -62,10 +70,80 @@ Python 명령은 현재 agent 환경에서 사용 가능한 `python3`로 실행�
 - 사용자가 명시적으로 다른 경로(예: 데스크탑, 특정 폴더)를 지정한 경우에만 그 경로를 우선한다.
 - 중간 산출물(임시 section XML 등)은 `output/` 대신 `tempfile`/`/tmp`에 두고 사용 후 삭제한다.
 
+## 연구개발 문서 작성 (hwpx-rd 추가 기능)
+
+### 문서 유형과 목차
+
+연구개발 결과보고서·실험계획서·실험결과 보고의 목차 골격과 작성 규칙은
+`$SKILL_DIR/references/rd-report-guide.md`에 있다. **문서를 쓰기 전에 반드시 읽는다.**
+결과보고서는 「국가연구개발혁신법 시행규칙」 별지 제5호서식(최종보고서)의 목차
+(요약 → 1. 개요 → 2. 수행 과정·내용 → 3. 결과·목표 달성도 → 4. 미달 원인 → 5. 기여 → 6. 활용 계획 → 붙임)를 따른다.
+
+### 본문 작성 도구 `rd_section.Report` (기본 경로)
+
+XML을 직접 쓰지 않고 함수 호출로 본문을 쌓는다. 스타일 ID·머리말 자리표시자 교체·표 ID·그림·쪽 번호를 도구가 처리한다.
+
+```python
+import sys; sys.path.insert(0, f"{SKILL_DIR}/scripts")
+from rd_section import Report
+
+r = Report(title="○○ 마커 검증 결과보고서")     # 머리말: (’YY. M. D., config/company.json의 기관명)
+r.heading("1. 연구개발과제의 개요")               # 소제목 (new_page=True 로 새 쪽)
+r.box("칩 기반 마커를 현장형 PCR 마커로 전환")    # □
+r.item("76개 SNP를 ASG-PCR로 설계하고 칩 유전형과 비교 검증함")  # ❍ (공백 2칸)
+r.dash("마커당 시료 10개 및 NTC 4웰")            # - (공백 4칸)
+r.note("NTC: 주형 DNA를 넣지 않은 음성 대조")     # ※
+r.table("achievement", [["실용 마커 확보", "40종", "67"]], caption="<표 1> 목표 달성 수준")
+r.image("fig/result.png", mm=140, caption="[그림 1] 판정 결과 분포")
+r.page_break()
+r.save("output/결과보고서.hwpx")                  # 쪽 번호 "- n -" 기본 포함, 구조 검증까지
+```
+
+- `Report(title, org=None, on=None)`: `org` 미지정 시 `config/company.json`의 `report_header`, `on` 미지정 시 오늘.
+- `table(template, data, headers=None, summary=None, caption=None)`: 빈 셀은 자동으로 `-`.
+- `image(path, mm=150, caption=None)`: PNG/JPEG. 너비는 본문폭 상한, 높이는 비율대로. 제목은 그림 아래.
+- 완성 예시: `$SKILL_DIR/examples/rd_result_report.py` (가상의 결과보고서, 그림·표 3종 포함).
+
+### 그림 삽입 (build_hwpx.py)
+
+XML을 직접 쓸 때는 그림 자리에 **그 문단의 텍스트 전체가** `[[IMG:경로|너비mm]]`인 문단을 둔다.
+`build_hwpx.py`가 빌드 중에 그림으로 바꾸고 `BinData/`·`content.hpf`·`header.xml binDataList`에 등록한다.
+상대 경로는 section 파일 폴더 → 현재 폴더 순으로 찾는다.
+
+```xml
+<hp:p id="1000000200" paraPrIDRef="1" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+  <hp:run charPrIDRef="0"><hp:t>[[IMG:fig/result.png|140]]</hp:t></hp:run>
+</hp:p>
+```
+
+### 쪽 번호
+
+`build_hwpx.py --page-number` (또는 `Report.save(page_number=True)`, 기본값) — 하단 가운데 `- n -`.
+
+### 연구개발용 표 양식 (추가분)
+
+| 템플릿 | 열 구성 | 용도 |
+|---|---|---|
+| `summary` | 구분/내용 (2열, 1:4) | 요약문, 과제 개요, 라벨:값 목록 |
+| `achievement` | 추진목표/달성내용/달성도(%) | 목표 달성 수준 (별지 제5호 3장) |
+| `sample_plan` | 구분/대상/시료 수/반응 수/비고 (+합계행) | 실험계획서의 시료·반응(웰) 수 |
+
+새 표 양식은 한글 없이도 `scripts/new_table_template.py`로 만들 수 있다(열 이름:너비:정렬).
+
+### 문체 검사 `--profile rd`
+
+기술 문서는 수치·단위가 많아 공공기관 기준(□ 30~35자, ❍ 65~70자)을 맞추기 어렵다.
+연구개발 문서는 `python3 "$SKILL_DIR/scripts/style_check.py" --profile rd output/결과보고서.hwpx`로 검사한다
+(□ 15~40자, ❍ 20~90자, `~함/~임` 허용, 서술형 종결 금지). 공공기관 제출 공문은 기본(`gov`) 기준을 쓴다.
+
+### 회사 설정
+
+`$SKILL_DIR/config/company.json` — 머리말 기관명(`report_header`)과 문서 작성자(`creator`). 다른 회사·부서는 이 파일만 고친다.
+
 ## 디렉토리 구조
 
 ```
-hwpx/
+hwpx-rd/
 ├── SKILL.md                              # 이 파일
 ├── scripts/
 │   ├── office/
@@ -76,8 +154,14 @@ hwpx/
 │   ├── preview_table.py                  # 표 템플릿 + 샘플 데이터 → 미리보기 .hwpx
 │   ├── extract_table_templates.py        # 표 라이브러리 HWPX → 표 템플릿 .xml 재생성
 │   ├── validate.py                       # HWPX 구조 검증
-│   ├── style_check.py                    # 개조식 문체 규칙 검사 (□/❍ 길이·종결)
-│   └── text_extract.py                   # 텍스트 추출 (python-hwpx 필요)
+│   ├── style_check.py                    # 개조식 문체 규칙 검사 (□/❍ 길이·종결, --profile gov|rd)
+│   ├── text_extract.py                   # 텍스트 추출 (python-hwpx 필요)
+│   ├── rd_section.py                     # [hwpx-rd] 본문 작성 도구 Report (□/❍/-/※, 표, 그림, 쪽 번호)
+│   └── new_table_template.py             # [hwpx-rd] 열 정의로 표 템플릿 생성 (한글 불필요)
+├── config/
+│   └── company.json                      # [hwpx-rd] 머리말 기관명·작성자
+├── examples/
+│   └── rd_result_report.py               # [hwpx-rd] 연구개발 결과보고서 예제 (+ fig_example.png)
 ├── templates/
 │   ├── base/                             # 내부 스켈레톤 (mimetype, META-INF, content.hpf 등 — build_hwpx.py가 자동 사용)
 │   ├── report/                           # 보고서 양식 (header.xml, section0.xml) — 모든 출력의 기본 오버레이
@@ -86,12 +170,16 @@ hwpx/
 │       ├── status.xml                    # 현황표 (4열: 번호/항목/추진현황/진행률)
 │       ├── budget.xml                    # 예산표 (5열, 합계행 포함)
 │       ├── schedule.xml                  # 일정표 (3열: 일자/추진내용/담당)
-│       └── checklist.xml                 # 점검표 (5열: 번호/점검항목/담당/확인/비고)
+│       ├── checklist.xml                 # 점검표 (5열: 번호/점검항목/담당/확인/비고)
+│       ├── summary.xml                   # [hwpx-rd] 요약문 (2열: 구분/내용)
+│       ├── achievement.xml               # [hwpx-rd] 목표 달성도 (3열)
+│       └── sample_plan.xml               # [hwpx-rd] 시료·반응 계획 (5열, 합계행)
 ├── assets/
 │   ├── report-template.hwpx              # report 템플릿 시각 기준 샘플 (런타임 미사용)
 │   └── all_tables_preview.hwpx           # 표 라이브러리 — extract_table_templates.py의 추출 소스
 └── references/
-    └── hwpx-format.md                    # OWPML XML 요소 레퍼런스
+    ├── hwpx-format.md                    # OWPML XML 요소 레퍼런스
+    └── rd-report-guide.md                # [hwpx-rd] 연구개발 문서 목차·작성 규칙
 ```
 
 `templates/base/`는 HWPX 컨테이너에 반드시 들어가야 하는 파일 골격(mimetype, META-INF, Preview, content.hpf 등)을 제공하는 내부 스켈레톤이다. `build_hwpx.py`가 자동으로 사용하며, 사용자가 직접 의식할 필요는 없다.
@@ -338,6 +426,9 @@ section0.xml의 첫 문단(`<hp:p>`)의 첫 런(`<hp:run>`)에 반드시 `<hp:se
 | `budget` | 연번/사업명/내용/예산(백만원)/비고 (5열) | ✓ | 예산 내역 |
 | `schedule` | 일자/추진내용/담당 (3열) | - | 일정 계획 |
 | `checklist` | 번호/점검항목/담당/확인/비고 (5열) | - | 점검·체크리스트 |
+| `summary` | 구분/내용 (2열) | - | 요약문·개요 [hwpx-rd] |
+| `achievement` | 추진목표/달성내용/달성도(%) (3열) | - | 목표 달성도 [hwpx-rd] |
+| `sample_plan` | 구분/대상/시료 수/반응 수/비고 (5열) | ✓ | 시료·반응 계획 [hwpx-rd] |
 
 > 위 열 구성은 현재 `templates/tables/*.xml` 기준이며 `extract_table_templates.py`로 재생성하면 바뀔 수 있다. 최신 목록은 `table_builder.py --list`로 확인한다.
 
@@ -615,6 +706,8 @@ python3 "$SKILL_DIR/scripts/validate.py" document.hwpx
 | `scripts/validate.py` | HWPX 파일 구조 검증 |
 | `scripts/style_check.py` | 개조식 문체 규칙 검사 (□/❍ 길이·종결) |
 | `scripts/text_extract.py` | HWPX 텍스트 추출 (python-hwpx 필요) |
+| `scripts/rd_section.py` | [hwpx-rd] 본문 작성 도구 `Report` — 연구개발 문서의 기본 경로 |
+| `scripts/new_table_template.py` | [hwpx-rd] 열 정의로 표 템플릿 생성 |
 
 ## 단위 변환
 
@@ -645,3 +738,5 @@ python3 "$SKILL_DIR/scripts/validate.py" document.hwpx
 12. **결과 저장 위치**: 모든 `.hwpx` 결과는 `$(pwd)/output/` 폴더에 저장한다. 폴더 미존재 시 자동 생성. 사용자가 다른 경로를 명시한 경우만 예외. ([결과 저장 위치] 섹션 참조)
 13. **첨부 .hwpx의 위상**: 사용자가 .hwpx 파일을 첨부하더라도 그 구조를 그대로 복원하지 않는다. 첨부 파일은 본문 내용 또는 스타일 의도 파악에만 참고하고, 출력은 항상 report 양식으로 생성한다. 원본 그대로의 구조 복원을 원하면 한글 오피스에서 직접 편집하도록 안내한다.
 14. **머리말 자리표시자 교체 필수**: `YY` / `. MM. DD., 부서명)` / `보고자료 제목` 자리표시자는 빌드 전에 반드시 실제 값으로 교체한다. 날짜는 `datetime.date.today()`를 기본값으로 사용한다(사용자가 다른 날짜를 명시한 경우만 예외). ([머리말·제목 자리표시자 교체] 섹션 참조)
+15. **그림**: XML 직접 작성 시 `[[IMG:경로|너비mm]]` 단독 문단으로 넣는다. `Report.image()`를 쓰면 자동. PNG/JPEG만.
+16. **외부 제출 문서의 기밀**: 독점 서열(예: 형광 태그 서열)·고객 원자료·개인 연락처를 넣지 않는다. 이름과 길이만 적는다.

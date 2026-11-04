@@ -1,4 +1,41 @@
-# hwpx — 한글파일(.hwpx) 보고서 자동 생성 스킬 for Claude Code
+# hwpx-rd — 연구개발 회사용 한글(.hwpx) 보고서 스킬 for Claude Code
+
+[kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)의 포크로, 연구개발 회사가 쓰는
+**연구개발 결과보고서·실험계획서·실험결과 보고**를 공공기관 보고서 양식의 한글파일(.hwpx)로 만들도록 고쳤습니다.
+원본의 기능(공공기관 보고서 양식, 표 템플릿, 개조식 문체 검사)은 그대로 쓸 수 있습니다.
+
+## 원본 대비 추가된 것
+
+| 기능 | 내용 |
+|---|---|
+| 본문 작성 도구 `scripts/rd_section.py` | XML 대신 `Report().heading()/box()/item()/dash()/note()/table()/image()` 호출로 본문 작성. 스타일 ID·머리말 교체·표 ID를 도구가 처리 |
+| 그림 삽입 | 본문에 `[[IMG:경로\|너비mm]]` 문단을 두면 빌드 시 그림으로 교체(PNG/JPEG, 비율 유지, 본문폭 상한) |
+| 쪽 번호 | `build_hwpx.py --page-number` → 하단 가운데 `- n -` |
+| 연구개발 문서 목차 | `references/rd-report-guide.md` — 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
+| 표 양식 3종 | `summary`(요약문), `achievement`(목표 달성도), `sample_plan`(시료·반응 수, 합계행) |
+| 표 양식 생성기 | `scripts/new_table_template.py` — 한글 없이 열 정의로 표 템플릿 생성 |
+| 문체 검사 `--profile rd` | 기술 문서용 완화 기준(□ 15~40자, ❍ 20~90자, `~함/~임` 허용) |
+| 회사 설정 | `config/company.json` — 머리말 기관명·작성자 |
+| 설치 안내 | PEP 668(`externally-managed-environment`) 환경 대응 |
+
+## 빠른 사용
+
+```bash
+git clone https://github.com/Key-man-fromArchive/hwpx-rd.git ~/.claude/skills/hwpx-rd
+python3 ~/.claude/skills/hwpx-rd/examples/rd_result_report.py     # → output/예제_연구개발결과보고서.hwpx
+```
+
+Claude Code에서는 "연구개발 결과보고서를 한글파일로 만들어줘", "실험계획서 hwpx로 써줘" 같은 요청에 스킬이 호출됩니다.
+다른 회사·부서에서 쓰려면 `config/company.json`의 기관명만 바꾸면 됩니다.
+
+> 생성 결과는 구조 검증(`validate.py`)과 python-hwpx 스키마 검사를 통과하도록 만들어졌지만, 최종 모양(쪽 나눔·글꼴)은
+> 한컴오피스 한글에서 열어 확인하세요. 양식 글꼴(휴먼명조·HY헤드라인M·한양중고딕)은 한글 설치 환경 기준입니다.
+
+---
+
+## 원본 README (kist-aix/hwpx)
+
+### hwpx — 한글파일(.hwpx) 보고서 자동 생성 스킬 for Claude Code
 
 **한글 보고서를 Claude에게 맡기는 스킬입니다.**
 "어떤 내용으로 어떤 보고서를 만들어줘"라고 알려주면, 공공기관 보고서 양식(머리말·제목·항목·표)에 맞춰 정돈된 한글파일(.hwpx)을 자동으로 만들어 줍니다. 사용자는 작성할 내용에만 집중하면 됩니다.
@@ -15,20 +52,20 @@
 
 ## 설치
 
-> Claude Code 등 agent에게 GitHub URL(`https://github.com/kist-aix/hwpx`)만 주고 "이거 설치해줘"라고 부탁하면, agent가 아래 절차를 따라 설치합니다. 사용자가 직접 실행해도 동일합니다.
+> Claude Code 등 agent에게 GitHub URL(`https://github.com/Key-man-fromArchive/hwpx-rd`)만 주고 "이거 설치해줘"라고 부탁하면, agent가 아래 절차를 따라 설치합니다. 사용자가 직접 실행해도 동일합니다.
 
 ### 사용자 전역 스킬로 설치 (모든 프로젝트에서 사용 — 권장)
 
 ```bash
-git clone --depth 1 https://github.com/kist-aix/hwpx.git ~/.claude/skills/hwpx
-python3 -m pip install --user -r ~/.claude/skills/hwpx/requirements.txt
+git clone --depth 1 https://github.com/Key-man-fromArchive/hwpx-rd.git ~/.claude/skills/hwpx-rd
+python3 -m pip install --user -r ~/.claude/skills/hwpx-rd/requirements.txt
 ```
 
 ### 현재 프로젝트 전용 스킬로 설치
 
 ```bash
-git clone --depth 1 https://github.com/kist-aix/hwpx.git .claude/skills/hwpx
-python3 -m pip install --user -r .claude/skills/hwpx/requirements.txt
+git clone --depth 1 https://github.com/Key-man-fromArchive/hwpx-rd.git .claude/skills/hwpx-rd
+python3 -m pip install --user -r .claude/skills/hwpx-rd/requirements.txt
 ```
 
 설치 후 Claude Code를 재시작하면 "한글파일 생성", "보고서 만들어줘", ".hwpx 작성" 같은 요청 시 자동으로 스킬이 호출됩니다.
@@ -37,17 +74,17 @@ python3 -m pip install --user -r .claude/skills/hwpx/requirements.txt
 
 ```bash
 # 사용자 전역
-git -C ~/.claude/skills/hwpx pull
+git -C ~/.claude/skills/hwpx-rd pull
 
 # 프로젝트 전용
-git -C .claude/skills/hwpx pull
+git -C .claude/skills/hwpx-rd pull
 ```
 
 ### 제거
 
 ```bash
-rm -rf ~/.claude/skills/hwpx        # 사용자 전역
-rm -rf .claude/skills/hwpx          # 프로젝트 전용
+rm -rf ~/.claude/skills/hwpx-rd     # 사용자 전역
+rm -rf .claude/skills/hwpx-rd       # 프로젝트 전용
 ```
 
 ## 의존성

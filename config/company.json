@@ -1,0 +1,6 @@
+{
+  "_comment": "머리말 기관명·문서 작성자 기본값. rd_section.Report 가 읽는다. 다른 회사·부서는 이 파일만 고친다.",
+  "report_header": "주식회사 인바이러스테크",
+  "creator": "주식회사 인바이러스테크",
+  "company_en": "InVirusTech Inc."
+}

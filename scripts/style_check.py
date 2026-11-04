@@ -10,9 +10,14 @@ SKILL.md 「본문 문체 규칙」을 기계적으로 점검한다:
 
 검사 대상은 hs:sec 직속 본문 문단(□/❍)이며, 표 셀 텍스트는 제외한다.
 
+연구개발 보고서용 프로파일(--profile rd)은 수치·단위·용어가 많은 기술 문서에 맞춰
+길이 기준을 넓히고(□ 15~40자, ❍ 20~90자; 라벨형 줄 하한 예외는 같음), '~함/~임' 종결을
+허용한다. 서술형 종결(합니다·습니다·한다·된다·있다·이다·했다)은 그대로 위반이다.
+
 Usage:
     python style_check.py output/report.hwpx
     python style_check.py section0.xml
+    python style_check.py --profile rd output/결과보고서.hwpx
 
 종료코드: 0 통과 / 1 위반 / 2 사용오류
 """
@@ -32,6 +37,12 @@ OMARK = "❍"
 BAD_ENDINGS = ("합니다", "습니다", "한다", "된다", "있다", "큼", "함")
 DO_MIN, DO_MAX = 30, 35   # □ 줄 글자 수 범위
 O_MIN, O_MAX = 65, 70     # ❍ 줄 글자 수 범위
+
+#: name -> (bad endings, □ min, □ max, ❍ min, ❍ max)
+PROFILES = {
+    "gov": (BAD_ENDINGS, DO_MIN, DO_MAX, O_MIN, O_MAX),
+    "rd": (("합니다", "습니다", "한다", "된다", "있다", "이다", "했다"), 15, 40, 20, 90),
+}
 LABEL_MAX = 10            # 라벨형 판정: ' : ' 앞 라벨 최대 길이
 
 
@@ -61,17 +72,18 @@ def is_label_line(content: str) -> bool:
     return len(content[:idx].strip()) <= LABEL_MAX
 
 
-def _ending_violation(content: str):
+def _ending_violation(content: str, bad_endings=BAD_ENDINGS):
     """피해야 할 종결로 끝나면 해당 종결 문자열을, 아니면 None."""
     tail = content.rstrip(" .·")
-    for b in BAD_ENDINGS:
+    for b in bad_endings:
         if tail.endswith(b):
             return b
     return None
 
 
-def check(path: Path):
+def check(path: Path, profile: str = "gov"):
     """(종류, 내용, 글자수, [위반사유], 라벨형여부) 목록 반환."""
+    bad_endings, DO_MIN, DO_MAX, O_MIN, O_MAX = PROFILES[profile]
     root = load_section(path)
     results = []
     for p in root.findall(HP_P):          # hs:sec 직속 본문 문단만
@@ -85,7 +97,7 @@ def check(path: Path):
                 v.append(f"길이 {n}자 — {DO_MAX}자 초과")
             elif n < DO_MIN and not label:
                 v.append(f"길이 {n}자 — {DO_MIN}자 미만")
-            bad = _ending_violation(content)
+            bad = _ending_violation(content, bad_endings)
             if bad:
                 v.append(f"종결 '~{bad}'")
             results.append(("□", content, n, v, label))
@@ -97,7 +109,7 @@ def check(path: Path):
                 v.append(f"길이 {n}자 — {O_MAX}자 초과")
             elif n < O_MIN:
                 v.append(f"길이 {n}자 — {O_MIN}자 미만")
-            bad = _ending_violation(content)
+            bad = _ending_violation(content, bad_endings)
             if bad:
                 v.append(f"종결 '~{bad}'")
             results.append(("❍", content, n, v, False))
@@ -105,17 +117,21 @@ def check(path: Path):
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("usage: python style_check.py <file.hwpx | section0.xml>",
+    args = sys.argv[1:]
+    profile = "gov"
+    if len(args) == 3 and args[0] == "--profile" and args[1] in PROFILES:
+        profile, args = args[1], args[2:]
+    if len(args) != 1:
+        print("usage: python style_check.py [--profile gov|rd] <file.hwpx | section0.xml>",
               file=sys.stderr)
         sys.exit(2)
-    path = Path(sys.argv[1])
+    path = Path(args[0])
     if not path.is_file():
         print(f"오류: 파일을 찾을 수 없음: {path}", file=sys.stderr)
         sys.exit(2)
 
-    results = check(path)
-    print(f"문체 검사: {path}")
+    results = check(path, profile)
+    print(f"문체 검사: {path} (프로파일 {profile})")
     if not results:
         print("  □/❍ 본문 줄을 찾지 못했습니다.")
         sys.exit(0)
