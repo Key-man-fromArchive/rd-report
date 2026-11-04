@@ -60,12 +60,12 @@ const LINE = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
 const run = (text, o = {}) => new TextRun({ text, font: o.font || FONT_BODY, size: o.size || SZ.body,
   bold: !!o.bold, color: o.color });
 // 기호 + 탭 + 내용, 내어쓰기로 둘째 줄을 내용 첫 글자에 맞춘다.
-function marked(symbol, text, { left, hanging, font, size, bold, before = 40, after = 40 }) {
+function marked(symbol, text, { left, hanging, font, size, bold, before = 40, after = 40, align = AlignmentType.JUSTIFIED }) {
   return new Paragraph({
     indent: { left, hanging },
     tabStops: [{ type: TabStopType.LEFT, position: left }],
     spacing: { before, after, line: 300 },
-    alignment: AlignmentType.JUSTIFIED,
+    alignment: align,
     children: [run(`${symbol}\t${text}`, { font, size, bold })],
   });
 }
@@ -261,7 +261,8 @@ function build(spec, baseDir) {
     } else if (b.dash !== undefined) {
       children.push(marked("-", strip(b.dash, "\\-"), { left: 960, hanging: 220 }));
     } else if (b.note !== undefined) {
-      children.push(marked("※", strip(b.note, "※"), { left: 600, hanging: 260, font: FONT_HEAD, size: SZ.note }));
+      // ※ 줄은 번호·코드가 길게 이어지는 일이 많아 양쪽 맞춤이면 글자 사이가 벌어진다 → 왼쪽 맞춤
+      children.push(marked("※", strip(b.note, "※"), { left: 600, hanging: 260, font: FONT_HEAD, size: SZ.note, align: AlignmentType.LEFT }));
     } else if (b.text !== undefined) {
       children.push(new Paragraph({ spacing: { before: 40, after: 40, line: 300 }, children: [run(b.text)] }));
     } else if (b.table !== undefined) {
