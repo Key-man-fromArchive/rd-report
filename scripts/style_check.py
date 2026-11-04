@@ -18,6 +18,7 @@ Usage:
     python style_check.py output/report.hwpx
     python style_check.py section0.xml
     python style_check.py --profile rd output/결과보고서.hwpx
+    python style_check.py --profile rd output/결과보고서.docx
 
 종료코드: 0 통과 / 1 위반 / 2 사용오류
 """
@@ -81,13 +82,27 @@ def _ending_violation(content: str, bad_endings=BAD_ENDINGS):
     return None
 
 
+def body_lines(path: Path):
+    """본문 문단 텍스트(표 셀 제외). .docx 는 python-docx, 그 밖은 HWPX/섹션 XML."""
+    if path.suffix.lower() == ".docx":
+        try:
+            import docx  # python-docx
+        except ImportError:
+            raise SystemExit("docx 검사에는 python-docx 가 필요합니다 (pip install python-docx).")
+        for para in docx.Document(str(path)).paragraphs:
+            # rd_docx.js 는 "□\t내용" 처럼 기호 뒤에 탭을 둔다.
+            yield para.text.replace("\t", " ").strip()
+        return
+    root = load_section(path)
+    for p in root.findall(HP_P):          # hs:sec 직속 본문 문단만
+        yield para_own_text(p)
+
+
 def check(path: Path, profile: str = "gov"):
     """(종류, 내용, 글자수, [위반사유], 라벨형여부) 목록 반환."""
     bad_endings, DO_MIN, DO_MAX, O_MIN, O_MAX = PROFILES[profile]
-    root = load_section(path)
     results = []
-    for p in root.findall(HP_P):          # hs:sec 직속 본문 문단만
-        text = para_own_text(p)
+    for text in body_lines(path):
         if text.startswith(DOMARK):
             content = text[1:].lstrip()
             n = len(content)

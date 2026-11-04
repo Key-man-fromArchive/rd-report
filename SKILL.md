@@ -1,13 +1,91 @@
 ---
-name: hwpx-rd
-description: "한글(HWPX) 보고서 생성/편집/읽기 스킬 — 연구개발 회사용(연구개발 결과보고서·실험계획서·실험결과 보고). .hwpx 파일, 한글 문서, 한글 보고서, 공문서 양식, 개조식 보고서, 연구개발 결과보고서, 실험계획서, Hancom, OWPML 관련 요청 시 사용. 그림 삽입·쪽 번호 지원."
+name: rd-report
+description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보고서·실험계획서·실험결과/검증 보고를 공공기관·연구보고서 양식(개조식 □❍-※, 흑백, 쪽 번호 - n -)의 Word(.docx)와 PDF로 만든다. '결과보고서', '실험계획서', '검증 보고서', '공문서 형식', '개조식 보고서', '연구개발 보고서 Word/PDF' 요청 시 사용. 한글(.hwpx) 출력도 부가 기능으로 지원."
 ---
 
-# HWPX 보고서 생성 스킬 (연구개발용) — XML-first 워크플로우
+# 연구개발 보고서 스킬 (rd-report) — Word·PDF 기본, 한글(HWPX) 부가
 
-> [kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)를 연구개발 회사용으로 고친 포크다. 원본 기능은 그대로이고,
-> 아래 「연구개발 문서 작성」 절의 기능(본문 작성 도구, 그림, 쪽 번호, 연구개발 표 양식, `rd` 문체 기준,
-> 회사 설정)이 더해졌다. **새 보고서는 「연구개발 문서 작성」 절의 `rd_section.Report`로 쓰는 것을 기본으로 한다.**
+> [kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)의 포크. 연구개발 회사의 주 산출물인 **Word·PDF**를
+> 기본 경로로 하고, 원본의 한글(HWPX) 기능은 아래 「부가 기능: 한글(HWPX)」에 그대로 남겼다.
+
+## 1. 기본 워크플로우: JSON → Word → PDF
+
+1. **목차 정하기** — `$SKILL_DIR/references/rd-report-guide.md`를 읽고 문서 유형(결과보고서·실험계획서·실험결과 보고)의 목차를 따른다.
+2. **내용을 JSON으로 작성** — 형식은 아래, 완성 예시는 `$SKILL_DIR/examples/rd_result_report.json`.
+3. **Word 생성**
+   ```bash
+   NODE_PATH=$(npm root -g) node "$SKILL_DIR/scripts/rd_docx.js" report.json output/보고서.docx
+   ```
+   필요: Node.js + `docx` 패키지(`npm install -g docx`).
+4. **문체 검사** — `python3 "$SKILL_DIR/scripts/style_check.py" --profile rd output/보고서.docx` (python-docx 필요)
+5. **PDF + 쪽 미리보기**
+   ```bash
+   python3 "$SKILL_DIR/scripts/to_pdf.py" output/보고서.docx --png output/preview
+   ```
+   ONLYOFFICE Document Server 이미지(`onlyoffice/documentserver`, `RD_ONLYOFFICE_IMAGE`로 변경)를 **일회용 컨테이너**로 돌려
+   변환한다. 운영 중인 ONLYOFFICE 컨테이너는 쓰지 않는다. 미리보기 PNG(pypdfium2 필요)를 **반드시 열어 보고**
+   표 넘침·쪽 나눔·그림 크기를 확인한 뒤 전달한다. docker가 없으면 Word의 "PDF로 저장"을 안내한다.
+
+결과물은 현재 작업 폴더의 `output/`에 둔다(사용자가 다른 경로를 지정한 경우 제외).
+
+### JSON 형식
+
+```json
+{
+  "title": "○○ 마커 검증 결과보고서",
+  "org": "주식회사 인바이러스테크",
+  "date": "2026-11-04",
+  "cover": [["과제명", "…"], ["수신", "…"]],
+  "blocks": [
+    {"h": "1. 연구개발과제의 개요"},
+    {"box": "□ 상위 항목"},
+    {"item": "❍ 하위 항목"},
+    {"dash": "- 세부 항목"},
+    {"note": "※ 참고"},
+    {"text": "기호 없는 본문"},
+    {"table": "achievement", "caption": "목표 달성 수준", "rows": [["…", "…", "67"]]},
+    {"image": "fig/result.png", "mm": 140, "caption": "판정 결과 분포"},
+    {"pagebreak": true},
+    {"appendix": "마커별 결론"}
+  ]
+}
+```
+
+| 키 | 설명 |
+|---|---|
+| `title` | 제목 상자 문구 (이중선 상하 테두리, 가운데) |
+| `org`, `date` | 머리말 「(’YY. M. D., 기관명)」. 생략 시 `config/company.json`의 `report_header`, 오늘 |
+| `cover` | 있으면 표지 쪽(제목 + 구분/내용 표 + 날짜·기관명)을 따로 만든다 |
+| `h` | 소제목 (`"new_page": true`로 새 쪽) |
+| `box` / `item` / `dash` / `note` | `□` / `❍` / `-` / `※` — 기호는 자동으로 붙으니 넣어도 되고 빼도 된다 |
+| `table` | 표 양식 이름: `summary`, `achievement`, `sample_plan`, `basic`, `status`, `budget`, `schedule`, `checklist`. 열이 다르면 `headers`·`widths`(비율)·`align`(`c`/`j`)로 직접 지정. `summary`는 합계행. 빈 칸은 자동 `-` |
+| `caption` | 표는 위 `<표 n> …`, 그림은 아래 `[그림 n] …` — 번호 자동 |
+| `image` | PNG/JPEG, `mm` 너비(본문폭 150mm 상한), 높이는 비율. 경로는 JSON 파일 기준 |
+| `appendix` | 새 쪽 + 「붙임 n. …」 |
+
+### 서식 (rd_docx.js)
+
+- A4, 좌우 여백 20mm. 글꼴은 제목류 `맑은 고딕`, 본문 `바탕` (`config/company.json`의 `font_heading`/`font_body`로 변경).
+- 흑백. 강조는 굵게와 표 머리줄 회색(#D9D9D9)까지.
+- 개조식 기호는 **글자로** 넣고 내어쓰기로 정렬한다(한글·메일 본문으로 붙여 넣어도 기호 유지).
+- 하단 가운데 쪽 번호 `- n -`.
+
+### 작성 규칙 요약 (상세: references/rd-report-guide.md)
+
+- 개조식, 명사형 또는 `~함/~임` 종결. 서술형(`~합니다/~한다`) 금지.
+- 숫자는 단위·분모와 함께(`76개 중 40개`, `168웰`). 실험계획서는 **시료 수·반응(웰) 수·대조군 수**를 반드시 적는다.
+- 확인한 것과 추정을 구분(`~로 추정됨`). 판정 기준은 숫자로.
+- 외부 제출 문서에 독점 서열(예: 형광 태그 서열)·고객 원자료·개인 연락처를 넣지 않는다.
+
+---
+
+# 부가 기능: 한글(HWPX)
+
+공공기관이 한글 파일을 요구할 때만 쓴다. 아래는 원본 스킬의 내용과 hwpx 전용 추가 기능이다.
+
+## HWPX 보고서 — XML-first 워크플로우
+
+> 한글(HWPX)로 만들 때는 「연구개발 문서 작성」 절의 `rd_section.Report`로 쓰는 것을 기본으로 한다.
 
 한글(Hancom Office)의 HWPX 보고서를 **XML 직접 작성** 중심으로 생성, 편집, 읽기할 수 있는 스킬.
 HWPX는 ZIP 기반 XML 컨테이너(OWPML 표준)이다. python-hwpx API의 서식 버그를 완전히 우회하며, 세밀한 서식 제어가 가능하다.
@@ -52,8 +130,8 @@ HWPX는 ZIP 기반 XML 컨테이너(OWPML 표준)이다. python-hwpx API의 서�
 
 | 설치 방식 | `SKILL_DIR` 값 |
 |---|---|
-| 사용자 전역 설치 | `$HOME/.claude/skills/hwpx-rd` |
-| 프로젝트 전용 설치 | `$(pwd)/.claude/skills/hwpx-rd` (프로젝트 루트 기준) |
+| 사용자 전역 설치 | `$HOME/.claude/skills/rd-report` |
+| 프로젝트 전용 설치 | `$(pwd)/.claude/skills/rd-report` (프로젝트 루트 기준) |
 | 리포 클론 직접 사용 | `$(pwd)` (리포 루트 자체가 곧 스킬) |
 
 Claude agent는 이 SKILL.md를 읽어 들인 실제 위치를 기준으로 `SKILL_DIR`를 자연스럽게 결정한다. 아래 모든 예시의 `$SKILL_DIR`는 이 값으로 치환해 사용한다.
@@ -143,7 +221,7 @@ XML을 직접 쓸 때는 그림 자리에 **그 문단의 텍스트 전체가** 
 ## 디렉토리 구조
 
 ```
-hwpx-rd/
+rd-report/
 ├── SKILL.md                              # 이 파일
 ├── scripts/
 │   ├── office/
@@ -156,12 +234,15 @@ hwpx-rd/
 │   ├── validate.py                       # HWPX 구조 검증
 │   ├── style_check.py                    # 개조식 문체 규칙 검사 (□/❍ 길이·종결, --profile gov|rd)
 │   ├── text_extract.py                   # 텍스트 추출 (python-hwpx 필요)
+│   ├── rd_docx.js                        # [rd-report] JSON → Word(.docx) 연구개발 보고서 (기본 경로)
+│   ├── to_pdf.py                         # [rd-report] DOCX → PDF + 쪽 미리보기 PNG (ONLYOFFICE 일회용 컨테이너)
 │   ├── rd_section.py                     # [hwpx-rd] 본문 작성 도구 Report (□/❍/-/※, 표, 그림, 쪽 번호)
 │   └── new_table_template.py             # [hwpx-rd] 열 정의로 표 템플릿 생성 (한글 불필요)
 ├── config/
 │   └── company.json                      # [hwpx-rd] 머리말 기관명·작성자
 ├── examples/
-│   └── rd_result_report.py               # [hwpx-rd] 연구개발 결과보고서 예제 (+ fig_example.png)
+│   ├── rd_result_report.json             # [rd-report] Word·PDF 결과보고서 예제
+│   └── rd_result_report.py               # [hwpx-rd] 한글(HWPX) 결과보고서 예제 (+ fig_example.png)
 ├── templates/
 │   ├── base/                             # 내부 스켈레톤 (mimetype, META-INF, content.hpf 등 — build_hwpx.py가 자동 사용)
 │   ├── report/                           # 보고서 양식 (header.xml, section0.xml) — 모든 출력의 기본 오버레이

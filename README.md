@@ -1,35 +1,40 @@
-# hwpx-rd — 연구개발 회사용 한글(.hwpx) 보고서 스킬 for Claude Code
+# rd-report — 연구개발 회사용 보고서 스킬 for Claude Code (Word·PDF, 한글 부가)
 
-[kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)의 포크로, 연구개발 회사가 쓰는
-**연구개발 결과보고서·실험계획서·실험결과 보고**를 공공기관 보고서 양식의 한글파일(.hwpx)로 만들도록 고쳤습니다.
-원본의 기능(공공기관 보고서 양식, 표 템플릿, 개조식 문체 검사)은 그대로 쓸 수 있습니다.
+연구개발 결과보고서·실험계획서·실험결과 보고를 **공공기관·연구보고서 양식**(개조식 `□ ❍ - ※`, 흑백, 회색 머리줄 표,
+`<표 n>`/`[그림 n]` 제목, 하단 `- n -` 쪽 번호)의 **Word(.docx)와 PDF**로 만드는 Claude Code 스킬입니다.
+[kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)의 포크이며, 원본의 한글(.hwpx) 생성 기능은 부가 기능으로 남아 있습니다.
 
-## 원본 대비 추가된 것
-
-| 기능 | 내용 |
-|---|---|
-| 본문 작성 도구 `scripts/rd_section.py` | XML 대신 `Report().heading()/box()/item()/dash()/note()/table()/image()` 호출로 본문 작성. 스타일 ID·머리말 교체·표 ID를 도구가 처리 |
-| 그림 삽입 | 본문에 `[[IMG:경로\|너비mm]]` 문단을 두면 빌드 시 그림으로 교체(PNG/JPEG, 비율 유지, 본문폭 상한) |
-| 쪽 번호 | `build_hwpx.py --page-number` → 하단 가운데 `- n -` |
-| 연구개발 문서 목차 | `references/rd-report-guide.md` — 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
-| 표 양식 3종 | `summary`(요약문), `achievement`(목표 달성도), `sample_plan`(시료·반응 수, 합계행) |
-| 표 양식 생성기 | `scripts/new_table_template.py` — 한글 없이 열 정의로 표 템플릿 생성 |
-| 문체 검사 `--profile rd` | 기술 문서용 완화 기준(□ 15~40자, ❍ 20~90자, `~함/~임` 허용) |
-| 회사 설정 | `config/company.json` — 머리말 기관명·작성자 |
-| 설치 안내 | PEP 668(`externally-managed-environment`) 환경 대응 |
-
-## 빠른 사용
+## 사용
 
 ```bash
-git clone https://github.com/Key-man-fromArchive/hwpx-rd.git ~/.claude/skills/hwpx-rd
-python3 ~/.claude/skills/hwpx-rd/examples/rd_result_report.py     # → output/예제_연구개발결과보고서.hwpx
+git clone https://github.com/Key-man-fromArchive/rd-report.git ~/.claude/skills/rd-report
+
+# 1) 내용(JSON) → Word
+NODE_PATH=$(npm root -g) node ~/.claude/skills/rd-report/scripts/rd_docx.js \
+  ~/.claude/skills/rd-report/examples/rd_result_report.json output/예제_결과보고서.docx
+# 2) Word → PDF + 쪽 미리보기 (docker + onlyoffice/documentserver 이미지)
+python3 ~/.claude/skills/rd-report/scripts/to_pdf.py output/예제_결과보고서.docx --png output/preview
+# 3) 개조식 문체 검사
+python3 ~/.claude/skills/rd-report/scripts/style_check.py --profile rd output/예제_결과보고서.docx
 ```
 
-Claude Code에서는 "연구개발 결과보고서를 한글파일로 만들어줘", "실험계획서 hwpx로 써줘" 같은 요청에 스킬이 호출됩니다.
-다른 회사·부서에서 쓰려면 `config/company.json`의 기관명만 바꾸면 됩니다.
+Claude Code에서는 "실험계획서 Word로 만들어줘", "결과보고서 PDF로" 같은 요청에 스킬이 쓰입니다.
+기관명·글꼴은 `config/company.json`에서 바꿉니다.
 
-> 생성 결과는 구조 검증(`validate.py`)과 python-hwpx 스키마 검사를 통과하도록 만들어졌지만, 최종 모양(쪽 나눔·글꼴)은
-> 한컴오피스 한글에서 열어 확인하세요. 양식 글꼴(휴먼명조·HY헤드라인M·한양중고딕)은 한글 설치 환경 기준입니다.
+## 구성
+
+| 파일 | 역할 |
+|---|---|
+| `scripts/rd_docx.js` | JSON → Word. 표 양식 8종(`summary`·`achievement`·`sample_plan`·`basic`·`status`·`budget`·`schedule`·`checklist`), 그림, 표지, 붙임 |
+| `scripts/to_pdf.py` | Word → PDF. ONLYOFFICE Document Server 이미지를 일회용 컨테이너로 실행, 쪽 미리보기 PNG |
+| `scripts/style_check.py` | 개조식 문체 검사(`.docx`/`.hwpx`), `--profile rd`(기술 문서) / 기본(공공기관 공문) |
+| `references/rd-report-guide.md` | 문서 유형별 목차 — 결과보고서는 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
+| `examples/rd_result_report.json` | 가상의 결과보고서 예제 |
+| `config/company.json` | 머리말 기관명·작성자·글꼴 |
+| 그 밖 (`build_hwpx.py`, `rd_section.py`, `templates/`) | 한글(.hwpx) 출력 — 부가 기능 |
+
+PDF의 글꼴: 변환 서버에 문서 글꼴(맑은 고딕·바탕)이 없으면 비슷한 글꼴로 대체됩니다(`~/.local/share/fonts`를 컨테이너에 붙여 씀).
+최종 모양은 받는 사람 PC의 Word 기준입니다.
 
 ---
 

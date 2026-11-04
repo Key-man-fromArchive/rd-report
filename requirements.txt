@@ -5,3 +5,10 @@ lxml>=4.6
 # Optional — only scripts/text_extract.py imports it (HWPX text extraction).
 # Safe to skip if you don't need text extraction.
 python-hwpx
+
+# Word·PDF 경로 (rd-report)
+#   - rd_docx.js : Node.js + docx (npm install -g docx)
+#   - style_check.py 의 .docx 검사 : python-docx
+#   - to_pdf.py 의 쪽 미리보기 PNG : pypdfium2 (PDF 변환 자체는 docker + onlyoffice/documentserver 이미지)
+python-docx
+pypdfium2
