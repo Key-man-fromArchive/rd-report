@@ -20,8 +20,11 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 4. **문체 검사** — `python3 "$SKILL_DIR/scripts/style_check.py" --profile rd output/보고서.docx` (python-docx 필요)
 5. **PDF + 쪽 미리보기**
    ```bash
+   sh "$SKILL_DIR/scripts/setup_fonts.sh"        # 처음 한 번: 변환용 나눔고딕·나눔명조(TTF, OFL)
    python3 "$SKILL_DIR/scripts/to_pdf.py" output/보고서.docx --png output/preview
    ```
+   변환용 사본에서만 맑은 고딕→나눔고딕, 바탕→나눔명조로 바꿔 변환한다(Word 파일은 그대로).
+   TrueType 글꼴이라 쓴 글자만 들어가 PDF가 작다(OTF CJK 글꼴은 통째로 들어가 수십 MB가 된다).
    ONLYOFFICE Document Server 이미지(`onlyoffice/documentserver`, `RD_ONLYOFFICE_IMAGE`로 변경)를 **일회용 컨테이너**로 돌려
    변환한다. 운영 중인 ONLYOFFICE 컨테이너는 쓰지 않는다. 미리보기 PNG(pypdfium2 필요)를 **반드시 열어 보고**
    표 넘침·쪽 나눔·그림 크기를 확인한 뒤 전달한다. docker가 없으면 Word의 "PDF로 저장"을 안내한다.

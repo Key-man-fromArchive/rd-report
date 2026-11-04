@@ -13,6 +13,7 @@ git clone https://github.com/Key-man-fromArchive/rd-report.git ~/.claude/skills/
 NODE_PATH=$(npm root -g) node ~/.claude/skills/rd-report/scripts/rd_docx.js \
   ~/.claude/skills/rd-report/examples/rd_result_report.json output/예제_결과보고서.docx
 # 2) Word → PDF + 쪽 미리보기 (docker + onlyoffice/documentserver 이미지)
+sh ~/.claude/skills/rd-report/scripts/setup_fonts.sh      # 처음 한 번: 나눔고딕·나눔명조
 python3 ~/.claude/skills/rd-report/scripts/to_pdf.py output/예제_결과보고서.docx --png output/preview
 # 3) 개조식 문체 검사
 python3 ~/.claude/skills/rd-report/scripts/style_check.py --profile rd output/예제_결과보고서.docx
@@ -27,14 +28,15 @@ Claude Code에서는 "실험계획서 Word로 만들어줘", "결과보고서 PD
 |---|---|
 | `scripts/rd_docx.js` | JSON → Word. 표 양식 8종(`summary`·`achievement`·`sample_plan`·`basic`·`status`·`budget`·`schedule`·`checklist`), 그림, 표지, 붙임 |
 | `scripts/to_pdf.py` | Word → PDF. ONLYOFFICE Document Server 이미지를 일회용 컨테이너로 실행, 쪽 미리보기 PNG |
+| `scripts/setup_fonts.sh` | 변환용 나눔고딕·나눔명조(TTF) 내려받기 |
 | `scripts/style_check.py` | 개조식 문체 검사(`.docx`/`.hwpx`), `--profile rd`(기술 문서) / 기본(공공기관 공문) |
 | `references/rd-report-guide.md` | 문서 유형별 목차 — 결과보고서는 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
 | `examples/rd_result_report.json` | 가상의 결과보고서 예제 |
 | `config/company.json` | 머리말 기관명·작성자·글꼴 |
 | 그 밖 (`build_hwpx.py`, `rd_section.py`, `templates/`) | 한글(.hwpx) 출력 — 부가 기능 |
 
-PDF의 글꼴: 변환 서버에 문서 글꼴(맑은 고딕·바탕)이 없으면 비슷한 글꼴로 대체됩니다(`~/.local/share/fonts`를 컨테이너에 붙여 씀).
-최종 모양은 받는 사람 PC의 Word 기준입니다.
+PDF의 글꼴: Word 파일은 맑은 고딕·바탕을 쓰고, PDF로 바꿀 때만 변환용 사본에서 나눔고딕·나눔명조(SIL OFL)로
+바꿔 변환합니다. Word 파일의 최종 모양은 받는 사람 PC의 Word 기준입니다.
 
 ---
 

@@ -8,8 +8,8 @@ ONLYOFFICE Document Server 이미지의 docbuilder 를 **일회용 컨테이너*
     python3 scripts/to_pdf.py output/보고서.docx --png output/preview --pages 1,2,5
 
 필요한 것: docker, 이미지 onlyoffice/documentserver (RD_ONLYOFFICE_IMAGE 로 바꿀 수 있음),
-미리보기 PNG는 pypdfium2. 한글 글꼴은 ~/.local/share/fonts 의 글꼴을 컨테이너에 붙여
-쓴다 — 문서 글꼴(맑은 고딕·바탕)이 없으면 가장 비슷한 글꼴로 대체되므로, 정확한 모양은
+미리보기 PNG는 pypdfium2. 한글 글꼴은 ~/.local/share/rd-report-fonts (RD_REPORT_FONTS)의
+TrueType 글꼴을 컨테이너에 붙여 쓴다(scripts/setup_fonts.sh 로 준비) — 문서 글꼴(맑은 고딕·바탕)이 없으면 가장 비슷한 글꼴로 대체되므로, 정확한 모양은
 받는 사람 PC의 Word에서 확인한다.
 
 docker 가 없으면 Word에서 [파일 → 다른 이름으로 저장 → PDF] 로 만든다.
@@ -20,13 +20,36 @@ import shutil
 import subprocess
 import sys
 import uuid
+import zipfile
 from pathlib import Path
 
 IMAGE = os.environ.get("RD_ONLYOFFICE_IMAGE", "onlyoffice/documentserver:8.2.2")
 BIN = "/var/www/onlyoffice/documentserver/server/FileConverter/bin"
 # docker 데몬이 볼 수 있는 곳(홈)에 작업 폴더를 둔다. /tmp 는 샌드박스에서 데몬에 안 보일 수 있다.
 CACHE = Path.home() / ".cache" / "rd-report"
-FONTS = Path.home() / ".local" / "share" / "fonts"
+#: 변환용 한글 글꼴. TrueType(.ttf)이어야 PDF에 쓴 글자만 들어간다 — OTF(CFF) CJK 글꼴은
+#: 통째로 들어가 3쪽짜리 PDF가 40MB를 넘는다. scripts/setup_fonts.sh 가 나눔고딕·나눔명조를 받는다.
+FONTS = Path(os.environ.get("RD_REPORT_FONTS", Path.home() / ".local" / "share" / "rd-report-fonts"))
+#: PDF 변환 때만 쓰는 글꼴 바꿔치기. 맑은 고딕·바탕은 변환 서버에 없어 엉뚱한 글꼴(본문이 고딕,
+#: 영문이 Trebuchet)로 대체되므로, 변환용 사본에서 이름을 비슷한 무료 글꼴로 바꾼다. Word 파일은
+#: 그대로이고, PDF 에는 실제로 쓴 나눔 글꼴이 그 이름 그대로 들어간다.
+PDF_FONT_MAP = {
+    "맑은 고딕": "NanumGothic", "Malgun Gothic": "NanumGothic",
+    "바탕": "NanumMyeongjo", "Batang": "NanumMyeongjo",
+}
+
+
+def _pdf_copy(src: Path, dst: Path) -> None:
+    """src 의 사본을 dst 에 쓰되, 본문·스타일·머리글·바닥글의 글꼴 이름을 PDF_FONT_MAP 대로 바꾼다."""
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.startswith("word/") and item.filename.endswith(".xml"):
+                text = data.decode("utf-8")
+                for old, new in PDF_FONT_MAP.items():
+                    text = text.replace(f'"{old}"', f'"{new}"')
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
 
 
 def convert(docx: Path, pdf: Path) -> None:
@@ -35,7 +58,7 @@ def convert(docx: Path, pdf: Path) -> None:
     work = CACHE / uuid.uuid4().hex
     work.mkdir(parents=True)
     try:
-        shutil.copy2(docx, work / "in.docx")
+        _pdf_copy(docx, work / "in.docx")
         (work / "conv.js").write_text(
             'builder.OpenFile("/data/in.docx");\n'
             'builder.SaveFile("pdf", "/data/out.pdf");\n'
