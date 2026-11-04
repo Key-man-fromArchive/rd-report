@@ -4,5 +4,11 @@
   "creator": "주식회사 인바이러스테크",
   "company_en": "InVirusTech Inc.",
   "font_heading": "맑은 고딕",
-  "font_body": "바탕"
+  "font_body": "바탕",
+  "cover_footer": [
+    "주식회사 인바이러스테크",
+    "전남광주통합특별시 북구 첨단과기로208번길 17-11, 607호 · Tel: 062-511-0682",
+    "기술 문의: ceo@invirustech.com, service@invirustech.com"
+  ],
+  "accent": "0B3D91"
 }

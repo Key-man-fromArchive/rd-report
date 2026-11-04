@@ -9,7 +9,10 @@
  *     "title": "○○ 마커 검증 결과보고서",
  *     "org": "주식회사 인바이러스테크",          // 생략 시 config/company.json report_header
  *     "date": "2026-11-04",                      // 생략 시 오늘
- *     "cover": [["과제명", "…"], ["수신", "…"]],   // 생략 가능: 있으면 표지 쪽을 따로 만든다
+ *     "cover": [["과제명", "…"], ["수신", "…"]],   // 생략 가능: 있으면 표지 쪽을 따로 만든다(흑백 표지)
+ *     // 또는 브랜드 표지(로고·색): {"style": "brand", "logo": "logo.png", "logo_mm": 55, "eyebrow": "제품명",
+ *     //   "subtitle": "영문 부제", "rows": [[k, v], …], "footer_logo": "ci.png", "footer_logo_mm": 40,
+ *     //   "footer_lines": ["회사명", "주소 · 전화", "문의"], "accent": "0B3D91"}  — footer_lines 생략 시 company.json
  *     "blocks": [
  *       {"h": "1. 연구개발과제의 개요"},          // 소제목 ("new_page": true 로 새 쪽)
  *       {"sub": "가. 판정 방법"},                 // 둘째 수준 소제목
@@ -196,6 +199,45 @@ function imageSize(buf) {
   throw new Error("이미지 크기를 읽지 못함 (PNG/JPEG만)");
 }
 
+// 브랜드 표지: 위 로고·제품명·제목·부제, 가운데 정보 표(옅은 라벨 칸, 아래 선만), 아래 회사 로고·주소.
+function brandCover(spec, baseDir, today, org) {
+  const c = spec.cover;
+  const accent = c.accent || company.accent || "0B3D91";
+  const out = [];
+  const logo = (file, mm, before, after) => {
+    const buf = fs.readFileSync(path.resolve(baseDir, file));
+    const [pw, ph] = imageSize(buf);
+    const w = (mm / 25.4) * 96;
+    return new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before, after },
+      children: [new ImageRun({ type: /\.jpe?g$/i.test(file) ? "jpg" : "png", data: buf,
+        transformation: { width: Math.round(w), height: Math.round((w * ph) / pw) },
+        altText: { title: path.basename(file), description: path.basename(file), name: path.basename(file) } })] });
+  };
+  if (c.logo) out.push(logo(c.logo, c.logo_mm || 55, 1700, 220));
+  if (c.eyebrow) out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: c.logo ? 0 : 2400, after: 180 },
+    children: [run(c.eyebrow, { font: FONT_HEAD, size: 23, bold: true, color: accent })] }));
+  out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 },
+    children: [run(spec.title, { font: FONT_HEAD, size: 38, bold: true, color: "172033" })] }));
+  if (c.subtitle) out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 1000 },
+    children: [run(c.subtitle, { font: FONT_HEAD, size: 21, color: "64748B" })] }));
+  const line = { style: BorderStyle.SINGLE, size: 4, color: "E2E8F0" };
+  const edges = { top: NONE, left: NONE, right: NONE, bottom: line };
+  const metaCell = (text, w, label) => new TableCell({ width: { size: w, type: WidthType.DXA }, borders: edges,
+    shading: label ? { fill: "F8FAFC", type: ShadingType.CLEAR, color: "auto" } : undefined,
+    margins: { top: 110, bottom: 110, left: 160, right: 160 }, verticalAlign: VerticalAlign.CENTER,
+    children: String(text).split("\n").map((t) => new Paragraph({
+      children: [run(t, { font: FONT_HEAD, size: 20, bold: label, color: label ? "475569" : undefined })] })) });
+  out.push(new Table({ width: { size: 6800, type: WidthType.DXA }, columnWidths: [2100, 4700], alignment: AlignmentType.CENTER,
+    layout: TableLayoutType.FIXED,
+    rows: (c.rows || []).map(([k, v]) => new TableRow({ cantSplit: true, children: [metaCell(k, 2100, true), metaCell(v, 4700, false)] })) }));
+  if (c.footer_logo) out.push(logo(c.footer_logo, c.footer_logo_mm || 40, 1400, 80));
+  const lines = c.footer_lines || company.cover_footer || [org];
+  lines.forEach((t, i) => out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: !c.footer_logo && i === 0 ? 1400 : 0 },
+    children: [run(t, { font: FONT_HEAD, size: i === 0 ? 21 : 17, bold: i === 0, color: i === 0 ? undefined : "64748B" })] })));
+  out.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+  return out;
+}
+
 function build(spec, baseDir) {
   const today = spec.date ? new Date(spec.date) : new Date();
   const yy = String(today.getFullYear() % 100).padStart(2, "0");
@@ -203,7 +245,9 @@ function build(spec, baseDir) {
   const children = [];
   let nTable = 0, nFig = 0, nAppendix = 0;
 
-  if (spec.cover) {
+  if (spec.cover && spec.cover.style === "brand") {
+    children.push(...brandCover(spec, baseDir, today, org));
+  } else if (spec.cover) {
     children.push(new Paragraph({ spacing: { before: 3000, after: 600 }, alignment: AlignmentType.CENTER,
       children: [run(spec.title, { font: FONT_HEAD, size: 40, bold: true })] }));
     children.push(table({ table: "summary", headers: ["구분", "내용"], rows: spec.cover, widths: [1, 3] }));

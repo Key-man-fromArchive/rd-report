@@ -16,7 +16,8 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
    ```bash
    NODE_PATH=$(npm root -g) node "$SKILL_DIR/scripts/rd_docx.js" report.json output/보고서.docx
    ```
-   필요: Node.js + `docx` 패키지(`npm install -g docx`).
+   필요: Node.js + `docx` 패키지(`npm install -g docx`). nvm 등으로 Node 버전이 바뀌면 `npm root -g`가 docx가 없는
+   곳을 가리킬 수 있다 — 그때는 docx가 설치된 버전의 `lib/node_modules`를 `NODE_PATH`로 직접 준다.
 4. **문체 검사** — `python3 "$SKILL_DIR/scripts/style_check.py" --profile rd output/보고서.docx` (python-docx 필요)
 5. **PDF + 쪽 미리보기**
    ```bash
@@ -58,7 +59,7 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 |---|---|
 | `title` | 제목 상자 문구 (이중선 상하 테두리, 가운데) |
 | `org`, `date` | 머리말 「(’YY. M. D., 기관명)」. 생략 시 `config/company.json`의 `report_header`, 오늘 |
-| `cover` | 있으면 표지 쪽(제목 + 구분/내용 표 + 날짜·기관명)을 따로 만든다 |
+| `cover` | 표지 쪽. 배열 `[[구분, 내용], …]`이면 흑백 표지, 객체 `{"style": "brand", …}`이면 **브랜드 표지**(아래) |
 | `h` | 소제목 (`"new_page": true`로 새 쪽) |
 | `box` / `item` / `dash` / `note` | `□` / `❍` / `-` / `※` — 기호는 자동으로 붙으니 넣어도 되고 빼도 된다 |
 | `table` | 표 양식 이름: `summary`, `achievement`, `sample_plan`, `basic`, `status`, `budget`, `schedule`, `checklist`. 열이 다르면 `headers`·`widths`(비율)·`align`(`c`/`j`)로 직접 지정. `summary`는 합계행. 빈 칸은 자동 `-` |
@@ -71,6 +72,19 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 표 추가 옵션: `headers: null`(머리줄 없음), `label_col: true`(첫 열을 회색 라벨로 — 항목:내용 카드),
 `size`(글자 크기, 반 pt 단위: 기본 20, 작은 표 13–15), 표 이름이 목록에 없으면(`"custom"` 등) `headers`·`widths`·`align`을 직접 준다.
 칸 값은 문자열 또는 `{"t": "…", "bold": true, "fill": "BFBFBF"}`(강조할 칸). 표는 고정 폭이라 `widths` 비율이 그대로 지켜진다.
+
+### 브랜드 표지 (고객 송부 보고서 기본)
+
+```json
+"cover": {"style": "brand", "logo": "제품로고.png", "logo_mm": 55, "eyebrow": "Q-Prism® ASG-PCR",
+          "subtitle": "Marker Validation Result & Action Plan",
+          "rows": [["수신", "…"], ["보고 대상", "…"], ["작성일", "…"], ["붙임", "1. …\n2. …"]],
+          "footer_logo": "회사로고.png", "footer_logo_mm": 40}
+```
+
+위 제품 로고·제품명(강조색)·제목·영문 부제, 가운데 정보 표(옅은 라벨 칸, 아래 선만), 아래 회사 로고와
+`config/company.json`의 `cover_footer`(회사명·주소·문의). 로고 파일은 저장소에 넣지 않고 경로로 준다.
+표지 쪽에는 쪽 번호를 찍지 않는다. 본문은 흑백 결과보고서 형식 그대로다.
 
 ### 서식 (rd_docx.js)
 
