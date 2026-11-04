@@ -1,7 +1,7 @@
 # rd-report — 연구개발 회사용 보고서 스킬 for Claude Code (Word·PDF, 한글 부가)
 
-연구개발 결과보고서·실험계획서·실험결과 보고를 **공공기관·연구보고서 양식**(개조식 `□ ❍ - ※`, 흑백, 회색 머리줄 표,
-`<표 n>`/`[그림 n]` 제목, 하단 `- n -` 쪽 번호)의 **Word(.docx)와 PDF**로 만드는 Claude Code 스킬입니다.
+연구개발 결과보고서·용역(의뢰) 결과보고서·실험계획서·실험결과 보고를 **공공기관·연구보고서 양식**(개조식 `□ ❍ - ※`, 흑백, 회색 머리줄 표,
+`<표 n>`/`[그림 n]` 제목, 목차, 하단 `- n -` 쪽 번호)의 **Word(.docx)와 PDF**로 만드는 Claude Code 스킬입니다.
 [kist-aix/hwpx](https://github.com/kist-aix/hwpx)(MIT)의 포크이며, 원본의 한글(.hwpx) 생성 기능은 부가 기능으로 남아 있습니다.
 
 ## 사용
@@ -27,11 +27,12 @@ Claude Code에서는 "실험계획서 Word로 만들어줘", "결과보고서 PD
 | 파일 | 역할 |
 |---|---|
 | `scripts/rd_docx.js` | JSON → Word. 표 양식 8종(`summary`·`achievement`·`sample_plan`·`basic`·`status`·`budget`·`schedule`·`checklist`), 그림, 표지, 붙임 |
-| `scripts/to_pdf.py` | Word → PDF. ONLYOFFICE Document Server 이미지를 일회용 컨테이너로 실행, 쪽 미리보기 PNG |
+| `scripts/to_pdf.py` | Word → PDF. ONLYOFFICE Document Server 이미지를 일회용 컨테이너로 실행, 쪽 미리보기 PNG. 목차 쪽 번호를 PDF에서 찾아 Word 파일에도 기록 |
 | `scripts/setup_fonts.sh` | 변환용 나눔고딕·나눔명조(TTF) 내려받기 |
 | `scripts/style_check.py` | 개조식 문체 검사(`.docx`/`.hwpx`), `--profile rd`(기술 문서) / 기본(공공기관 공문) |
-| `references/rd-report-guide.md` | 문서 유형별 목차 — 결과보고서는 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
-| `examples/rd_result_report.json` | 가상의 결과보고서 예제 |
+| `references/rd-report-guide.md` | 문서 성격(연구개발 결과·용역 결과·실험계획·검증 보고) 고르는 규칙과 성격별 목차 — 연구개발 결과보고서는 「국가연구개발혁신법 시행규칙」 별지 제5호(최종보고서) 목차 준용 |
+| `examples/rd_result_report.json` | 가상의 연구개발 결과보고서 예제 |
+| `examples/rd_service_report.json` | 가상의 용역(의뢰) 결과보고서 예제 — 고객 송부용 |
 | `config/company.json` | 머리말 기관명·작성자·글꼴 |
 | 그 밖 (`build_hwpx.py`, `rd_section.py`, `templates/`) | 한글(.hwpx) 출력 — 부가 기능 |
 

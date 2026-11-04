@@ -1,5 +1,6 @@
 {
   "title": "○○ 분자마커 패널 검증 결과보고서",
+  "toc": true,
   "blocks": [
     {"h": "요약"},
     {"table": "summary", "rows": [

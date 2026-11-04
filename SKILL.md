@@ -1,6 +1,6 @@
 ---
 name: rd-report
-description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보고서·실험계획서·실험결과/검증 보고를 공공기관·연구보고서 양식(개조식 □❍-※, 흑백, 쪽 번호 - n -)의 Word(.docx)와 PDF로 만든다. '결과보고서', '실험계획서', '검증 보고서', '공문서 형식', '개조식 보고서', '연구개발 보고서 Word/PDF' 요청 시 사용. 한글(.hwpx) 출력도 부가 기능으로 지원."
+description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보고서·용역(의뢰) 결과보고서·실험계획서·실험결과/검증 보고를 공공기관·연구보고서 양식(개조식 □❍-※, 흑백, 쪽 번호 - n -)의 Word(.docx)와 PDF로 만든다. '결과보고서', '용역 결과보고서', '의뢰 결과물', '실험계획서', '검증 보고서', '공문서 형식', '개조식 보고서', '연구개발 보고서 Word/PDF' 요청 시 사용. 한글(.hwpx) 출력도 부가 기능으로 지원."
 ---
 
 # 연구개발 보고서 스킬 (rd-report) — Word·PDF 기본, 한글(HWPX) 부가
@@ -10,8 +10,12 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 
 ## 1. 기본 워크플로우: JSON → Word → PDF
 
-1. **목차 정하기** — `$SKILL_DIR/references/rd-report-guide.md`를 읽고 문서 유형(결과보고서·실험계획서·실험결과 보고)의 목차를 따른다.
-2. **내용을 JSON으로 작성** — 형식은 아래, 완성 예시는 `$SKILL_DIR/examples/rd_result_report.json`.
+1. **문서 성격과 목차 정하기** — `$SKILL_DIR/references/rd-report-guide.md`를 읽고 문서 성격을 먼저 고른다:
+   연구개발 결과보고서(정부·기관 과제), **용역(의뢰) 결과보고서(고객이 의뢰한 서비스의 결과물)**, 실험계획서,
+   실험결과·검증 보고. 수신자가 고객이면 용역 체계를 쓰고 「연구개발과제」, 「연구개발성과」 같은 과제 보고서 용어는
+   쓰지 않는다. 장 이름은 골격일 뿐이므로 내용에 맞게 바꾼다. **목차(`"toc": true`)는 기본으로 넣는다.**
+2. **내용을 JSON으로 작성** — 형식은 아래, 완성 예시는 `$SKILL_DIR/examples/rd_result_report.json`(연구개발 결과),
+   `$SKILL_DIR/examples/rd_service_report.json`(용역 결과).
 3. **Word 생성**
    ```bash
    NODE_PATH=$(npm root -g) node "$SKILL_DIR/scripts/rd_docx.js" report.json output/보고서.docx
@@ -24,6 +28,8 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
    sh "$SKILL_DIR/scripts/setup_fonts.sh"        # 처음 한 번: 변환용 나눔고딕·나눔명조(TTF, OFL)
    python3 "$SKILL_DIR/scripts/to_pdf.py" output/보고서.docx --png output/preview
    ```
+   목차가 있으면 PDF에서 각 장의 실제 쪽을 찾아 **Word 파일의 목차 쪽 번호도 고쳐 쓴 뒤** 다시 변환한다
+   (그래서 Word·PDF 목차가 일치한다. Word에서 내용을 고쳤다면 목차에서 F9로 갱신).
    변환용 사본에서만 맑은 고딕→나눔고딕, 바탕→나눔명조로 바꿔 변환한다(Word 파일은 그대로).
    TrueType 글꼴이라 쓴 글자만 들어가 PDF가 작다(OTF CJK 글꼴은 통째로 들어가 수십 MB가 된다).
    ONLYOFFICE Document Server 이미지(`onlyoffice/documentserver`, `RD_ONLYOFFICE_IMAGE`로 변경)를 **일회용 컨테이너**로 돌려
@@ -40,8 +46,9 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
   "org": "주식회사 인바이러스테크",
   "date": "2026-11-04",
   "cover": [["과제명", "…"], ["수신", "…"]],
+  "toc": true,
   "blocks": [
-    {"h": "1. 연구개발과제의 개요"},
+    {"h": "1. 의뢰 개요"},
     {"box": "□ 상위 항목"},
     {"item": "❍ 하위 항목"},
     {"dash": "- 세부 항목"},
@@ -60,6 +67,7 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 | `title` | 제목 상자 문구 (이중선 상하 테두리, 가운데) |
 | `org`, `date` | 머리말 「(’YY. M. D., 기관명)」. 생략 시 `config/company.json`의 `report_header`, 오늘 |
 | `cover` | 표지 쪽. 배열 `[[구분, 내용], …]`이면 흑백 표지, 객체 `{"style": "brand", …}`이면 **브랜드 표지**(아래) |
+| `toc` | 목차 쪽(표지 다음, 제목 상자 앞). 장(`h`)·붙임과 본문 장의 「가.」 소제목이 들어가고 붙임 안의 소제목은 빠진다. `{"subs": false}`면 장·붙임만. 쪽 번호는 `to_pdf.py`가 채운다 |
 | `h` | 소제목 (`"new_page": true`로 새 쪽) |
 | `box` / `item` / `dash` / `note` | `□` / `❍` / `-` / `※` — 기호는 자동으로 붙으니 넣어도 되고 빼도 된다 |
 | `table` | 표 양식 이름: `summary`, `achievement`, `sample_plan`, `basic`, `status`, `budget`, `schedule`, `checklist`. 열이 다르면 `headers`·`widths`(비율)·`align`(`c`/`j`)로 직접 지정. `summary`는 합계행. 빈 칸은 자동 `-` |
@@ -95,6 +103,7 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
 
 ### 작성 규칙 요약 (상세: references/rd-report-guide.md)
 
+- 목차는 기본. 장 이름은 문서 성격(연구개발·용역·계획·검증)에 맞게 — 고객에게는 용역 체계.
 - 개조식, 명사형 또는 `~함/~임` 종결. 서술형(`~합니다/~한다`) 금지.
 - 숫자는 단위·분모와 함께(`76개 중 40개`, `168웰`). 실험계획서는 **시료 수·반응(웰) 수·대조군 수**를 반드시 적는다.
 - 확인한 것과 추정을 구분(`~로 추정됨`). 판정 기준은 숫자로.

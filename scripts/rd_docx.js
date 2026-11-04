@@ -13,6 +13,8 @@
  *     // 또는 브랜드 표지(로고·색): {"style": "brand", "logo": "logo.png", "logo_mm": 55, "eyebrow": "제품명",
  *     //   "subtitle": "영문 부제", "rows": [[k, v], …], "footer_logo": "ci.png", "footer_logo_mm": 40,
  *     //   "footer_lines": ["회사명", "주소 · 전화", "문의"], "accent": "0B3D91"}  — footer_lines 생략 시 company.json
+ *     "toc": true,                               // 목차 쪽(표지 다음). {"subs": false} 면 「가.」 소제목 제외
+ *     // 쪽 번호는 PAGEREF 필드 — to_pdf.py 가 PDF 의 실제 쪽을 찾아 Word 파일에도 써 넣는다
  *     "blocks": [
  *       {"h": "1. 연구개발과제의 개요"},          // 소제목 ("new_page": true 로 새 쪽)
  *       {"sub": "가. 판정 방법"},                 // 둘째 수준 소제목
@@ -42,7 +44,7 @@ const path = require("path");
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun, Footer,
   AlignmentType, BorderStyle, WidthType, ShadingType, VerticalAlign, PageNumber, TabStopType,
-  TableLayoutType,
+  TableLayoutType, Bookmark, InternalHyperlink, SimpleField, LeaderType,
 } = require("docx");
 
 const SKILL_DIR = path.resolve(__dirname, "..");
@@ -258,6 +260,42 @@ function build(spec, baseDir) {
     children.push(new Paragraph({ pageBreakBefore: true, children: [] }));
   }
 
+  // 목차: 장(h)·붙임은 항상, 본문 장의 「가.」 소제목은 기본 포함(붙임 안의 소제목은 제외)
+  const tocId = new Map();
+  if (spec.toc) {
+    const subs = !(typeof spec.toc === "object" && spec.toc.subs === false);
+    const entries = [];
+    let inAppendix = false, nA = 0;
+    for (const b of spec.blocks || []) {
+      let level = 0, text = null;
+      if (b.h !== undefined) { level = 1; text = b.h; inAppendix = false; }
+      else if (b.appendix !== undefined) { level = 1; text = `붙임 ${++nA}. ${b.appendix}`; inAppendix = true; }
+      else if (b.sub !== undefined && subs && !inAppendix) { level = 2; text = b.sub; }
+      if (!level) continue;
+      const id = `_Toc_rd${entries.length + 1}`;
+      tocId.set(b, id);
+      entries.push({ level, text, id });
+    }
+    children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 480 },
+      children: [run("목    차", { font: FONT_HEAD, size: SZ.title, bold: true })] }));
+    for (const e of entries) {
+      const top = e.level === 1;
+      children.push(new Paragraph({ style: "RdToc", keepNext: false,
+        tabStops: [{ type: TabStopType.RIGHT, position: CONTENT, leader: LeaderType.DOT }],
+        indent: { left: top ? 0 : 420 }, spacing: { before: top ? 180 : 40, after: 40 },
+        children: [
+          new InternalHyperlink({ anchor: e.id, children: [run(e.text, { font: FONT_HEAD, size: top ? 23 : 21, bold: top })] }),
+          new TextRun({ text: "\t", font: FONT_HEAD, size: 21 }),
+          new SimpleField(`PAGEREF ${e.id} \\h`, "-"),
+        ] }));
+    }
+    children.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+  }
+  const label = (b, text, o) => {
+    const r = run(text, o);
+    return tocId.has(b) ? [new Bookmark({ id: tocId.get(b), children: [r] })] : [r];
+  };
+
   // 머리말 줄과 제목 상자 (공공기관 보고서 관행)
   children.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 80 },
     children: [run(`(’${yy}. ${today.getMonth() + 1}. ${today.getDate()}.${org ? ", " + org : ""})`, { font: FONT_HEAD, size: SZ.meta })] }));
@@ -270,10 +308,10 @@ function build(spec, baseDir) {
     if (b.h !== undefined) {
       children.push(new Paragraph({ pageBreakBefore: !!b.new_page, keepNext: true,
         spacing: { before: b.new_page ? 0 : 320, after: 120 },
-        children: [run(b.h, { font: FONT_HEAD, size: SZ.heading, bold: true })] }));
+        children: label(b, b.h, { font: FONT_HEAD, size: SZ.heading, bold: true }) }));
     } else if (b.sub !== undefined) {
       children.push(new Paragraph({ keepNext: true, spacing: { before: 200, after: 80 },
-        children: [run(b.sub, { font: FONT_HEAD, size: SZ.box, bold: true })] }));
+        children: label(b, b.sub, { font: FONT_HEAD, size: SZ.box, bold: true }) }));
     } else if (b.grid !== undefined) {
       if (b.caption) {
         nFig++;
@@ -297,7 +335,7 @@ function build(spec, baseDir) {
       nAppendix++;
       children.push(new Paragraph({ pageBreakBefore: true, keepNext: true, spacing: { after: 200 },
         border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: "000000", space: 4 } },
-        children: [run(`붙임 ${nAppendix}. ${b.appendix}`, { font: FONT_HEAD, size: SZ.heading, bold: true })] }));
+        children: label(b, `붙임 ${nAppendix}. ${b.appendix}`, { font: FONT_HEAD, size: SZ.heading, bold: true }) }));
     } else if (b.box !== undefined) {
       children.push(marked("□", strip(b.box, "□"), { left: 340, hanging: 340, font: FONT_HEAD, size: SZ.box, bold: true, before: 160 }));
     } else if (b.item !== undefined) {
@@ -333,7 +371,9 @@ function build(spec, baseDir) {
 
   return new Document({
     creator: company.creator || org, title: spec.title,
-    styles: { default: { document: { run: { font: FONT_BODY, size: SZ.body } } } },
+    styles: { default: { document: { run: { font: FONT_BODY, size: SZ.body } } },
+      // 목차 쪽 번호(PAGEREF 필드 결과)는 글자 서식이 없으므로 문단 스타일로 글꼴을 준다
+      paragraphStyles: [{ id: "RdToc", name: "RD TOC", basedOn: "Normal", run: { font: FONT_HEAD, size: 21 } }] },
     sections: [{
       // 표지가 있으면 첫 쪽에는 쪽 번호를 찍지 않는다(titlePage + 빈 첫 쪽 바닥글).
       properties: { titlePage: !!spec.cover, page: { size: { width: PAGE.width, height: PAGE.height },
@@ -346,6 +386,21 @@ function build(spec, baseDir) {
   });
 }
 
+// docx-js 는 북마크마다 같은 w:id 를 준다 → 목차 북마크를 순서대로 다시 번호 매긴다(Word 는 id 중복을 허용하지 않음)
+async function fixBookmarkIds(buf) {
+  const JSZip = require(require.resolve("jszip", { paths: [path.dirname(require.resolve("docx"))] }));
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file("word/document.xml").async("string");
+  if (!xml.includes("_Toc_rd")) return buf;
+  let n = 0, m = 0;
+  const out = xml
+    .replace(/<w:bookmarkStart w:name="(_Toc_rd\d+)" w:id="\d+"\/>/g, (_, name) => `<w:bookmarkStart w:name="${name}" w:id="${9000 + ++n}"/>`)
+    .replace(/<w:bookmarkEnd w:id="\d+"\/>/g, () => `<w:bookmarkEnd w:id="${9000 + ++m}"/>`);
+  if (n !== m) throw new Error(`북마크 시작·끝 개수가 다름 (${n}/${m})`);
+  zip.file("word/document.xml", out);
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
 async function main() {
   const [specPath, outPath] = process.argv.slice(2);
   if (!specPath || !outPath) {
@@ -355,7 +410,7 @@ async function main() {
   const spec = JSON.parse(fs.readFileSync(specPath, "utf8"));
   const doc = build(spec, path.dirname(path.resolve(specPath)));
   fs.mkdirSync(path.dirname(path.resolve(outPath)), { recursive: true });
-  fs.writeFileSync(outPath, await Packer.toBuffer(doc));
+  fs.writeFileSync(outPath, await fixBookmarkIds(await Packer.toBuffer(doc)));
   console.log(`DOCX: ${outPath}`);
 }
 

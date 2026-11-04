@@ -12,9 +12,15 @@ ONLYOFFICE Document Server 이미지의 docbuilder 를 **일회용 컨테이너*
 TrueType 글꼴을 컨테이너에 붙여 쓴다(scripts/setup_fonts.sh 로 준비) — 문서 글꼴(맑은 고딕·바탕)이 없으면 가장 비슷한 글꼴로 대체되므로, 정확한 모양은
 받는 사람 PC의 Word에서 확인한다.
 
+목차(rd_docx.js "toc")가 있으면 한 번 변환한 PDF 에서 각 장이 실린 쪽을 찾아 Word 파일의
+PAGEREF 필드 값에 써 넣고(입력 .docx 를 그 자리에서 고침) 다시 변환한다. Word 에서 고친 뒤에는
+목차에서 [필드 업데이트](F9)로 다시 맞출 수 있다.
+
 docker 가 없으면 Word에서 [파일 → 다른 이름으로 저장 → PDF] 로 만든다.
 """
 import argparse
+import html
+import re
 import os
 import shutil
 import subprocess
@@ -79,6 +85,62 @@ def convert(docx: Path, pdf: Path) -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+TOC_FIELD = re.compile(r'(<w:fldSimple w:instr="PAGEREF (_Toc_rd\d+) \\h"[^>]*>.*?<w:t[^>]*>)([^<]*)(</w:t>)', re.S)
+TOC_MARK = re.compile(r'<w:bookmarkStart [^>]*w:name="(_Toc_rd\d+)"[^>]*/>(.*?)</w:p>', re.S)
+
+
+def _squash(t: str) -> str:
+    return re.sub(r"\s+", "", t)
+
+
+def toc_targets(docx: Path) -> list[tuple[str, str]]:
+    """목차 북마크 (이름, 제목 글자) — 문서 순서."""
+    with zipfile.ZipFile(docx) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+    if "PAGEREF _Toc_rd" not in xml:
+        return []
+    return [(name, html.unescape("".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", body))))
+            for name, body in TOC_MARK.findall(xml)]
+
+
+def find_pages(pdf: Path, targets: list[tuple[str, str]]) -> dict[str, int]:
+    """제목이 한 줄 전체로 나오는 첫 쪽을 문서 순서대로 앞에서부터 찾는다.
+    목차 줄은 점선·쪽 번호가 붙어 한 줄 전체와 같지 않으므로 목차 쪽에는 걸리지 않는다."""
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(str(pdf))
+    lines = [{_squash(l) for l in doc[i].get_textpage().get_text_range().splitlines()} for i in range(len(doc))]
+    pages, start = {}, 0
+    for name, text in targets:
+        key = _squash(text)
+        for i in range(start, len(lines)):
+            if key in lines[i]:
+                pages[name] = i + 1
+                start = i
+                break
+        else:
+            print(f"목차: 「{text}」 쪽을 PDF 에서 찾지 못함 — 「-」로 둠", file=sys.stderr)
+    return pages
+
+
+def write_toc_pages(docx: Path, pages: dict[str, int]) -> bool:
+    """PAGEREF 필드의 표시값을 pages 로 바꾼다. 바뀐 것이 있으면 True."""
+    tmp = docx.with_suffix(".toc.tmp")
+    changed = False
+    with zipfile.ZipFile(docx) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                def sub(m):
+                    nonlocal changed
+                    new = str(pages.get(m.group(2), "-"))
+                    changed |= new != m.group(3)
+                    return m.group(1) + new + m.group(4)
+                data = TOC_FIELD.sub(sub, data.decode("utf-8")).encode("utf-8")
+            zout.writestr(item, data)
+    tmp.replace(docx)
+    return changed
+
+
 def render_png(pdf: Path, out_dir: Path, pages: list[int] | None, scale: float) -> list[Path]:
     try:
         import pypdfium2 as pdfium
@@ -106,6 +168,12 @@ def main() -> None:
     a = ap.parse_args()
     pdf = a.pdf or a.docx.with_suffix(".pdf")
     convert(a.docx.resolve(), pdf)
+    targets = toc_targets(a.docx)
+    if targets:
+        # 쪽 번호 글자 수가 바뀌어도 목차 줄 수는 그대로라 두 번째 변환에서 쪽이 밀리지 않는다
+        if write_toc_pages(a.docx, find_pages(pdf, targets)):
+            convert(a.docx.resolve(), pdf)
+        print(f"목차: {len(targets)}개 항목 쪽 번호 기록 ({a.docx})")
     print(f"PDF: {pdf}")
     if a.png:
         pages = [int(x) for x in a.pages.split(",")] if a.pages else None
