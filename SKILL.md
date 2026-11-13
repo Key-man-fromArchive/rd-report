@@ -16,6 +16,13 @@ description: "연구개발 회사용 보고서 스킬 — 연구개발 결과보
    쓰지 않는다. 장 이름은 골격일 뿐이므로 내용에 맞게 바꾼다. **목차(`"toc": true`)는 기본으로 넣는다.**
 2. **내용을 JSON으로 작성** — 형식은 아래, 완성 예시는 `$SKILL_DIR/examples/rd_result_report.json`(연구개발 결과),
    `$SKILL_DIR/examples/rd_service_report.json`(용역 결과).
+2-1. **윤문** — `$SKILL_DIR/references/polish-rules.md`를 읽고 JSON 문장을 다듬는다. 상투 접속어·쉼표 연쇄·빈 수사를 걷어내고 내용·수치는 그대로 둔다.
+   먼저 원본을 남기고(`cp report.json report.orig.json`), 다듬은 뒤 사실 보존을 검사한다.
+   ```bash
+   python3 "$SKILL_DIR/scripts/fact_guard.py" report.orig.json report.json            # 위반 시 종료 코드 1
+   python3 "$SKILL_DIR/scripts/fact_guard.py" report.orig.json report.json --restore report.json  # 위반 구간만 원문으로
+   ```
+   소제목 구간마다 수치·식별자·부정·유보 표현이 같은지, 소제목·표·그림이 그대로인지 본다. Markdown(`.md`)도 검사할 수 있다(되돌리기는 JSON만).
 3. **Word 생성**
    ```bash
    NODE_PATH=$(npm root -g) node "$SKILL_DIR/scripts/rd_docx.js" report.json output/보고서.docx
